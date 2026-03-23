@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { buildPath } from './Path'; 
 
 function Login() {
   const app_name = 'cop-4331-22.com';
@@ -40,14 +41,6 @@ function Login() {
 
   function handleSetPassword(e: any): void {
     setPassword(e.target.value);
-  }
-
-  function buildPath(route: string): string {
-    if (import.meta.env.MODE != 'development') {
-      return 'http://' + app_name + ':5000/' + route;
-    } else {
-      return 'http://localhost:5000/' + route;
-    }
   }
 
   return (
