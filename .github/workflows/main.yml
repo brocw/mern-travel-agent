@@ -14,9 +14,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '22.18'
+          node-version: '24.14'
           cache: 'npm'
-          cache-dependency-path: package-lock.json frontend/package-lock.json
+          cache-dependency-path: | 
+            package-lock.json 
+            frontend/package-lock.json
       
       # Install and build frontend
       - name: Install frontend dependencies
