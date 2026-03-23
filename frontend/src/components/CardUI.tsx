@@ -6,7 +6,6 @@ function CardUI() {
   let ud = JSON.parse(_ud);
   let userId: string = ud.id;
 
-  const app_name = 'cop-4331-22.com';
   const [message, setMessage] = useState('');
   const [searchResults, setResults] = useState('');
   const [cardList, setCardList] = useState('');

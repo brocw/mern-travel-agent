@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { buildPath } from './Path'; 
 
 function Login() {
-  const app_name = 'cop-4331-22.com';
   const [message, setMessage] = useState('');
   const [loginName, setLoginName] = React.useState('');
   const [loginPassword, setPassword] = React.useState('');
