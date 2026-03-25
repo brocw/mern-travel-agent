@@ -2,6 +2,12 @@ import React, { useState } from "react";
 import { buildPath } from "./Path";
 import { storeToken } from "../tokenStorage";
 import { jwtDecode } from "jwt-decode";
+import type { JwtPayload } from "jwt-decode";
+
+interface MyJwtPayload extends JwtPayload {
+  firstName: string;
+  lastName: string;
+}
 
 function Login() {
   const [message, setMessage] = useState("");
@@ -26,11 +32,11 @@ function Login() {
       const { accessToken } = res;
       storeToken(res);
 
-      const decoded = jwtDecode(accessToken);
+      const decoded = jwtDecode(accessToken) as MyJwtPayload;
 
       try {
         var ud = decoded;
-        var userId = ud.iat;
+        var userId = ud.iat ?? -1;
         var firstName = ud.firstName;
         var lastName = ud.lastName;
 
