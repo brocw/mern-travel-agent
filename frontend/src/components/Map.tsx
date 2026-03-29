@@ -27,7 +27,13 @@ const Map = ({ location, places }: MapProps) => {
     // Load Google Maps API script
     if (!window.google) {
       const script = document.createElement('script');
-      const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyAhD6Idrkdwj5lePSy484H3eabV2-sDmqE';
+      const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+      if (!apiKey) {
+        console.error('Google Maps API key not found. Please set VITE_GOOGLE_MAPS_API_KEY in .env');
+        return;
+      }
+
       script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
       script.async = true;
       script.defer = true;
