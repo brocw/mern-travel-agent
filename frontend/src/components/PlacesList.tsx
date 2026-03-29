@@ -6,6 +6,7 @@ interface Place {
   lat: number;
   lng: number;
   placeId: string;
+  image?: string;
 }
 
 interface PlacesListProps {
@@ -19,14 +20,45 @@ const PlacesList = ({ places, onAddToTrip, loading }: PlacesListProps) => {
     <div id="placesListContainer">
       <h3>Things To Do</h3>
       {loading && <p>Loading places...</p>}
-      {!loading && places.length === 0 && <p>No places found. Search for a location first.</p>}
+      {!loading && places.length === 0 && (
+        <p>No places found. Search for a location first.</p>
+      )}
       <div id="placesList" className="scrollable-list">
         {places.map((place, index) => (
           <div key={index} className="card-item">
+            <img
+              src={
+                place.image || "https://via.placeholder.com/300x200?text=Place"
+              }
+              alt={place.name}
+              style={{
+                width: "100%",
+                maxHeight: "200px",
+                objectFit: "cover",
+                marginBottom: "10px",
+              }}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src =
+                  "https://via.placeholder.com/300x200?text=Place";
+              }}
+            />
+
             <h4>{place.name}</h4>
-            <p><strong>Address:</strong> {place.address}</p>
-            {place.rating && <p><strong>Rating:</strong> ⭐ {place.rating}</p>}
-            <p><strong>Type:</strong> {place.type.replace(/_/g, ' ')}</p>
+
+            <p>
+              <strong>Address:</strong> {place.address}
+            </p>
+
+            {place.rating && (
+              <p>
+                <strong>Rating:</strong> ⭐ {place.rating}
+              </p>
+            )}
+
+            <p>
+              <strong>Type:</strong> {place.type.replace(/_/g, " ")}
+            </p>
+
             <button
               className="buttons add-btn"
               onClick={() => onAddToTrip(place)}

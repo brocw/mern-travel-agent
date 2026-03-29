@@ -1,142 +1,61 @@
-import { useEffect, useRef } from 'react';
+import { GoogleMap, LoadScript, Marker } from "@react-google-maps/api";
 
 interface Place {
+  name: string;
+  address: string;
+  rating?: number;
+  type: string;
   lat: number;
   lng: number;
+  placeId: string;
+  image?: string;
+}
+
+interface Location {
   name: string;
-  address?: string;
+  lat: number;
+  lng: number;
 }
 
 interface MapProps {
-  location: Place | null;
+  location: Location;
   places: Place[];
 }
 
-declare global {
-  interface Window {
-    google: any;
-  }
-}
+const containerStyle = {
+  width: "100%",
+  height: "600px",
+};
+
+const libraries: ("places")[] = ["places"];
 
 const Map = ({ location, places }: MapProps) => {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-
-  useEffect(() => {
-    // Load Google Maps API script
-    if (!window.google) {
-      const script = document.createElement('script');
-      const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-
-      if (!apiKey) {
-        console.error('Google Maps API key not found. Please set VITE_GOOGLE_MAPS_API_KEY in .env');
-        return;
-      }
-
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        if (location) {
-          initializeMap();
-        }
-      };
-      document.head.appendChild(script);
-    } else if (location && !mapInstanceRef.current) {
-      initializeMap();
-    }
-  }, []);
-
-  useEffect(() => {
-    if (location && mapInstanceRef.current && window.google) {
-      updateMap();
-    }
-  }, [location, places]);
-
-  const initializeMap = () => {
-    if (!mapRef.current || !location || !window.google) return;
-
-    mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-      zoom: 13,
-      center: { lat: location.lat, lng: location.lng },
-      mapTypeControl: true,
-      streetViewControl: false,
-    });
-
-    // Add main location marker
-    new window.google.maps.Marker({
-      position: { lat: location.lat, lng: location.lng },
-      map: mapInstanceRef.current,
-      title: location.name,
-      icon: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
-    });
-
-    // Add place markers
-    places.forEach((place) => {
-      const marker = new window.google.maps.Marker({
-        position: { lat: place.lat, lng: place.lng },
-        map: mapInstanceRef.current,
-        title: place.name,
-      });
-      markersRef.current.push(marker);
-    });
-  };
-
-  const updateMap = () => {
-    if (!mapInstanceRef.current || !location || !window.google) return;
-
-    // Clear old place markers
-    markersRef.current.forEach((marker) => marker.setMap(null));
-    markersRef.current = [];
-
-    // Update map center
-    mapInstanceRef.current.setCenter({ lat: location.lat, lng: location.lng });
-
-    // Add new place markers
-    places.forEach((place) => {
-      const marker = new window.google.maps.Marker({
-        position: { lat: place.lat, lng: place.lng },
-        map: mapInstanceRef.current,
-        title: place.name,
-      });
-      markersRef.current.push(marker);
-    });
-  };
-
-  if (!location) {
-    return (
-      <div
-        id="mapContainer"
-        style={{
-          width: '100%',
-          height: '400px',
-          border: '1px solid #ccc',
-          borderRadius: '4px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#f0f0f0',
-        }}
-      >
-        <p style={{ color: '#666', textAlign: 'center' }}>
-          Search for a location to display map
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div
-      id="mapContainer"
-      ref={mapRef}
-      style={{
-        width: '100%',
-        height: '400px',
-        border: '1px solid #ccc',
-        borderRadius: '4px',
-      }}
-    />
+    <div style={{ width: "100%", height: "600px" }}>
+      <LoadScript
+        googleMapsApiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
+        libraries={libraries}
+      >
+        <GoogleMap
+          mapContainerStyle={containerStyle}
+          center={{ lat: location.lat, lng: location.lng }}
+          zoom={12}
+        >
+          <Marker
+            position={{ lat: location.lat, lng: location.lng }}
+            title={location.name}
+          />
+
+          {places.map((place, index) => (
+            <Marker
+              key={place.placeId || index}
+              position={{ lat: place.lat, lng: place.lng }}
+              title={place.name}
+            />
+          ))}
+        </GoogleMap>
+      </LoadScript>
+    </div>
   );
 };
 
