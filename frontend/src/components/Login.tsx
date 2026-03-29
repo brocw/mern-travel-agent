@@ -92,12 +92,19 @@ function Login() {
         type="submit"
         id="loginButton"
         className="buttons"
-        value="Do It"
+        value="Login"
         onClick={doLogin}
       />
       <span id="loginResult">{message}</span>
       <br />
-      <a href="/register">Don't have an account? Register here</a>
+      <input
+        type="button"
+        id="registerButton"
+        className="buttons"
+        value="Register"
+        onClick={() => window.location.href = "/register"}
+      />
+      {/* <a href="/register">Don't have an account? Register here</a> */} 
     </div>
   );
 }
