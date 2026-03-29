@@ -96,6 +96,8 @@ function Login() {
         onClick={doLogin}
       />
       <span id="loginResult">{message}</span>
+      <br />
+      <a href="/register">Don't have an account? Register here</a>
     </div>
   );
 }
