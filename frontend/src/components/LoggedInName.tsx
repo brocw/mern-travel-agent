@@ -14,11 +14,17 @@ function LoggedInName() {
   function doLogout(event: any): void {
     event.preventDefault();
     localStorage.removeItem("user_data");
+    localStorage.removeItem("token_data");
     window.location.href = '/';
   };
+
   return (
     <div id="loggedInDiv">
-      <span id="userName">Logged In As {userName} </span><br />
+      <span id="userName">Logged In As {userName}</span>
+      <span style={{ marginLeft: '20px' }}>
+        <a href="/search" style={{ marginRight: '15px' }}>Search</a>
+        <a href="/trips" style={{ marginRight: '15px' }}>My Trips</a>
+      </span>
       <button type="button" id="logoutButton" className="buttons"
         onClick={doLogout}> Log Out </button>
     </div>

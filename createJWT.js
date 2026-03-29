@@ -24,26 +24,32 @@ _createToken = function (fn, ln, id) {
 };
 
 exports.isExpired = function (token) {
-  var isError = jwt.verify(
-    token,
-    process.env.ACCESS_TOKEN_SECRET,
-    (err, verifiedJwt) => {
-      if (err) {
-        return true;
-      } else {
-        return false;
-      }
-    },
-  );
-
-  return isError;
+  try {
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    return false; // Token is valid
+  } catch (err) {
+    console.log("Token verification error:", err.message);
+    return true; // Token is expired or invalid
+  }
 };
 
 exports.refresh = function (token) {
-  var ud = jwt.decode(token, { complete: true });
-  var userId = ud.payload.id;
-  var firstName = ud.payload.firstName;
-  var lastName = ud.payload.lastName;
-
-  return _createToken(firstName, lastName, userId);
+  try {
+    if (!token) {
+      console.log('Token refresh error: No token provided');
+      return { error: 'No token provided' };
+    }
+    var ud = jwt.decode(token, { complete: true });
+    if (!ud || !ud.payload) {
+      console.log('Token refresh error: Invalid token structure');
+      return { error: 'Invalid token structure' };
+    }
+    var userId = ud.payload.userId;
+    var firstName = ud.payload.firstName;
+    var lastName = ud.payload.lastName;
+    return _createToken(firstName, lastName, userId);
+  } catch (e) {
+    console.log('Token refresh error:', e.message);
+    return { error: 'Token refresh failed: ' + e.message };
+  }
 };

@@ -4,6 +4,8 @@ import './App.css';
 import LoginPage from './pages/LoginPage.tsx';
 import RegisterPage from './pages/RegisterPage.tsx';
 import CardPage from './pages/CardPage.tsx';
+import SearchPage from './pages/SearchPage.tsx';
+import TripPage from './pages/TripPage.tsx';
 
 function App() {
   return (
@@ -12,6 +14,8 @@ function App() {
         <Route path="/" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/cards" element={<CardPage />} />
+        <Route path="/search" element={<SearchPage />} />
+        <Route path="/trips" element={<TripPage />} />
       </Routes>
     </BrowserRouter>
   );

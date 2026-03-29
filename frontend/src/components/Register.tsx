@@ -64,7 +64,7 @@ function Register() {
           localStorage.setItem("user_data", JSON.stringify(user));
 
           setMessage("");
-          window.location.href = "/cards";
+          window.location.href = "/search";
         }
       } catch (e) {
         console.log(e);

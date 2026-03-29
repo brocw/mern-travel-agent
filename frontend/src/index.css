@@ -66,3 +66,265 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Search and Travel Page Styles */
+#searchContainer {
+  margin: 20px 0;
+  padding: 15px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+#searchContainer form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+#locationInput {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #999;
+  border-radius: 4px;
+  font-size: 1em;
+  font-family: inherit;
+}
+
+#searchMessage {
+  font-weight: 500;
+}
+
+#mainContent {
+  margin-top: 20px;
+}
+
+#mapAndPlaces {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+#mapSection {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+#placesSection {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 15px;
+  background-color: #f9f9f9;
+}
+
+#eventsSection {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 15px;
+  background-color: #f9f9f9;
+  margin-bottom: 20px;
+}
+
+#mapContainer {
+  width: 100%;
+  height: 400px;
+}
+
+.scrollable-list {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.card-item {
+  border: 1px solid #ddd;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+  background-color: white;
+}
+
+.card-item h4 {
+  margin: 0 0 8px 0;
+  font-size: 1.1em;
+}
+
+.card-item p {
+  margin: 5px 0;
+  font-size: 0.95em;
+}
+
+.add-btn {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.add-btn:hover {
+  background-color: #45a049;
+  border-color: #45a049;
+}
+
+.buttons {
+  background-color: #333;
+  color: white;
+  border: 1px solid #666;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.95em;
+}
+
+.buttons:hover {
+  background-color: #555;
+}
+
+.buttons:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+#tripPlannerContainer {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 15px;
+  background-color: #f9f9f9;
+}
+
+#tripPlannerPanel {
+  border: 1px solid #999;
+  border-radius: 4px;
+  padding: 15px;
+  background-color: white;
+  margin-top: 10px;
+}
+
+.panel h3 {
+  margin-top: 0;
+}
+
+.trip-items-list {
+  border-top: 1px solid #ddd;
+  padding-top: 10px;
+  margin: 10px 0;
+}
+
+.trip-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background-color: #fafafa;
+}
+
+.trip-item > div {
+  flex: 1;
+}
+
+.trip-item p {
+  margin: 3px 0;
+}
+
+.remove-btn {
+  background-color: #ff9800;
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+  white-space: nowrap;
+  margin-left: 10px;
+}
+
+.remove-btn:hover {
+  background-color: #e68900;
+}
+
+#tripsContainer {
+  margin: 20px 0;
+  padding: 15px;
+}
+
+#tripsList {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 15px;
+}
+
+.trip-card {
+  border: 1px solid #999;
+  border-radius: 4px;
+  padding: 15px;
+  background-color: white;
+}
+
+.trip-card h3 {
+  margin: 0 0 5px 0;
+  color: #333;
+}
+
+.trip-card h4 {
+  margin: 10px 0 5px 0;
+}
+
+.trip-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.trip-card li {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+}
+
+.delete-btn {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.delete-btn:hover {
+  background-color: #da190b;
+}
+
+#loggedInDiv {
+  margin: 10px 0;
+  padding: 10px;
+  text-align: right;
+  border-bottom: 1px solid #ccc;
+}
+
+#userName {
+  font-weight: 500;
+}
+
+#logoutButton {
+  margin-left: 15px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  #mapAndPlaces {
+    grid-template-columns: 1fr;
+  }
+
+  #searchContainer form {
+    flex-direction: column;
+  }
+
+  #locationInput {
+    width: 100%;
+  }
+}
