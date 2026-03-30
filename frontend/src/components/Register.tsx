@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { buildPath } from "./Path";
 import { storeToken } from "../tokenStorage";
 import { jwtDecode } from "jwt-decode";
