@@ -39,6 +39,61 @@ exports.setApp = function (app, client) {
     res.status(200).json(ret);
   });
 
+  app.post("/api/register", async (req, res, next) => {
+    // incoming: firstName, lastName, login, email, password
+    // outgoing: id, firstName, lastName, error, accessToken
+
+    var error = "";
+
+    console.log(req.body);
+
+    const { firstName, lastName, login, email, password } = req.body;
+
+    const db = client.db("COP4331Cards");
+
+    // Check if user already exists
+    const existingUser = await db
+      .collection("Users")
+      .findOne({ Login: login });
+
+    if (existingUser) {
+      res.status(200).json({ error: "Username already exists." });
+      return;
+    }
+
+    const existingEmail = await db
+      .collection("Users")
+      .findOne({ Email: email });
+
+    if (existingEmail) {
+      res.status(200).json({ error: "Email already exists." });
+      return;
+    }
+
+    try {
+      // Get the next userId
+      const userCount = await db.collection("Users").countDocuments();
+      const newUserId = userCount + 1;
+
+      const newUser = {
+        UserId: newUserId,
+        FirstName: firstName,
+        LastName: lastName,
+        Login: login,
+        Email: email,
+        Password: password,
+      };
+
+      await db.collection("Users").insertOne(newUser);
+
+      const token = require("./createJWT.js");
+      const ret = token.createToken(firstName, lastName, newUserId);
+      res.status(200).json(ret);
+    } catch (e) {
+      res.status(200).json({ error: e.message });
+    }
+  });
+
   app.post("/api/login", async (req, res, next) => {
     // incoming: login, password
     // outgoing: id, firstName, lastName, error
