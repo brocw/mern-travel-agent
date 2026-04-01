@@ -318,7 +318,7 @@ exports.setApp = function (app, client) {
         return res.status(200).json({
           places: [],
           error: "Google Places API key is not configured.",
-          jwtToken: refreshedToken,
+          jwtToken: getRefreshedToken(refreshedToken),
         });
       }
 
@@ -336,7 +336,7 @@ exports.setApp = function (app, client) {
         return res.status(200).json({
           places: [],
           error: data.error_message || "No places found for this location.",
-          jwtToken: refreshedToken,
+          jwtToken: getRefreshedToken(refreshedToken),
         });
       }
 
@@ -353,14 +353,14 @@ exports.setApp = function (app, client) {
           : null,
       }));
 
-      return res.status(200).json({ places, error: "", jwtToken: refreshedToken });
+      return res.status(200).json({ places, error: "", jwtToken: getRefreshedToken(refreshedToken) });
 
     } catch (e) {
       console.log("Places API Error:", e.toString());
       return res.status(200).json({
         places: [],
         error: "Failed to fetch places. Please try again.",
-        jwtToken: refreshedToken,
+        jwtToken: getRefreshedToken(refreshedToken),
       });
     }
   });
