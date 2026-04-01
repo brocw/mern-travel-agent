@@ -7,6 +7,7 @@ import type { JwtPayload } from "jwt-decode";
 interface MyJwtPayload extends JwtPayload {
   firstName: string;
   lastName: string;
+  userId: number;
 }
 
 function Login() {
@@ -29,6 +30,11 @@ function Login() {
 
       var res = JSON.parse(await response.text());
 
+      if (res.error && res.error.length > 0) {
+        setMessage(res.error);
+        return;
+      }
+
       const { accessToken } = res;
       storeToken(res);
 
@@ -36,14 +42,14 @@ function Login() {
 
       try {
         var ud = decoded;
-        var userId = ud.iat ?? -1;
+        var userId = ud.userId;
         var firstName = ud.firstName;
         var lastName = ud.lastName;
 
         console.log(firstName);
         console.log(lastName);
 
-        if (userId <= 0) {
+        if (!userId || userId <= 0) {
           setMessage("User/Password combination incorrect.");
         } else {
           var user = { firstName: firstName, lastName: lastName, id: userId };
@@ -104,7 +110,6 @@ function Login() {
         value="Register"
         onClick={() => window.location.href = "/register"}
       />
-      {/* <a href="/register">Don't have an account? Register here</a> */} 
     </div>
   );
 }

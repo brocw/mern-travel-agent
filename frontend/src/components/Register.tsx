@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { buildPath } from "./Path";
 import { storeToken } from "../tokenStorage";
 import { jwtDecode } from "jwt-decode";
@@ -7,6 +7,7 @@ import type { JwtPayload } from "jwt-decode";
 interface MyJwtPayload extends JwtPayload {
   firstName: string;
   lastName: string;
+  userId: number;
 }
 
 function Register() {
@@ -50,14 +51,14 @@ function Register() {
 
       try {
         var ud = decoded;
-        var userId = ud.iat ?? -1;
+        var userId = ud.userId;
         var fn = ud.firstName;
         var ln = ud.lastName;
 
         console.log(fn);
         console.log(ln);
 
-        if (userId <= 0) {
+        if (!userId || userId <= 0) {
           setMessage("Registration failed.");
         } else {
           var user = { firstName: fn, lastName: ln, id: userId };
