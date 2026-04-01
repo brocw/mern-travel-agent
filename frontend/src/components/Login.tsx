@@ -50,7 +50,7 @@ function Login() {
           localStorage.setItem("user_data", JSON.stringify(user));
 
           setMessage("");
-          window.location.href = "/search";
+          window.location.href = "/search"; //change it back to cards for lab checkin
         }
       } catch (e) {
         console.log(e);
