@@ -67,6 +67,15 @@ jobs:
             # Navigate to backend directory
             cd /var/cardsServer
 
+            # Create .env file from GitHub secrets
+            cat > .env << 'EOF'
+            MONGODB_URL=${{ secrets.MONGODB_URL }}
+            PORT=${{ secrets.PORT }}
+            ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}
+            GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
+            GOOGLE_PLACES_API_KEY=${{ secrets.GOOGLE_PLACES_API_KEY }}
+            EOF
+
             # Install dependencies
             npm ci --production
 
