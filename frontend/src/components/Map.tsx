@@ -28,8 +28,8 @@ const Map = ({ location, places }: MapProps) => {
 
     // Load Google Maps API script
     if (!window.google) {
-      const apiKey = process.env.VITE_GOOGLE_MAPS_API_KEY;
-      console.log('API Key from env:', apiKey ? `${apiKey.substring(0, 5)}...` : 'NOT FOUND');
+      const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+      console.log('API Key from env:', apiKey ? `Found: ${apiKey.substring(0, 5)}...` : 'NOT FOUND');
 
       if (!apiKey) {
         console.warn('Google Maps API key not found. Map will display placeholder.');
