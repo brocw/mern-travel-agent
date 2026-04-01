@@ -24,16 +24,19 @@ const Map = ({ location, places }: MapProps) => {
   const markersRef = useRef<any[]>([]);
 
   useEffect(() => {
+    console.log('Map component mounted/updated. Location:', location, 'mapRef current:', mapRef.current);
+
     // Load Google Maps API script
     if (!window.google) {
-      const script = document.createElement('script');
       const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+      console.log('API Key from env:', apiKey ? `${apiKey.substring(0, 5)}...` : 'NOT FOUND');
 
       if (!apiKey) {
-        console.error('Google Maps API key not found. Please set VITE_GOOGLE_MAPS_API_KEY in .env');
+        console.warn('Google Maps API key not found. Map will display placeholder.');
         return;
       }
 
+      const script = document.createElement('script');
       script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
       script.async = true;
       script.defer = true;
@@ -42,11 +45,14 @@ const Map = ({ location, places }: MapProps) => {
           initializeMap();
         }
       };
+      script.onerror = () => {
+        console.error('Failed to load Google Maps API script');
+      };
       document.head.appendChild(script);
     } else if (location && !mapInstanceRef.current) {
       initializeMap();
     }
-  }, []);
+  }, [location]);
 
   useEffect(() => {
     if (location && mapInstanceRef.current && window.google) {
