@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import PageTitle from '../components/PageTitle';
 import LoggedInName from '../components/LoggedInName';
 import { buildPath } from '../components/Path';
-import { storeToken } from '../tokenStorage';
+import { getAccessToken, storeToken } from '../tokenStorage';
 
 interface TripItem {
   type: 'place' | 'event';
@@ -25,8 +25,8 @@ const TripPage = () => {
   const userData = localStorage.getItem('user_data');
   const user = userData ? JSON.parse(userData) : null;
 
-  // Helper function to get the current token from localStorage (not a stale closure variable)
-  const getToken = () => localStorage.getItem('token_data');
+  // Always send the raw JWT string, not the serialized token object.
+  const getToken = () => getAccessToken();
 
   useEffect(() => {
     loadTrips();
