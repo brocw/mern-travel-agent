@@ -34,6 +34,9 @@ interface TripItem {
 
 const SearchPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [placeFilter, setPlaceFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [location, setLocation] = useState<any>(null);
   const [places, setPlaces] = useState<Place[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -45,13 +48,7 @@ const SearchPage = () => {
   const userData = localStorage.getItem('user_data');
   const user = userData ? JSON.parse(userData) : null;
 
-const getToken = (): string => getAccessToken();
-
-  const extractAccessToken = (tokenObj: any): string => {
-    if (!tokenObj) return '';
-    if (typeof tokenObj === 'string') return tokenObj;
-    return tokenObj.accessToken || '';
-  };
+  const getToken = () => getAccessToken();
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,9 +65,7 @@ const getToken = (): string => getAccessToken();
     setTripItems([]);
 
     try {
-      console.log('Searching for location:', searchQuery);
       const currentToken = getToken();
-      console.log('Token:', currentToken ? `${currentToken.substring(0, 20)}...` : 'No token');
 
       const searchResponse = await fetch(buildPath('api/searchLocation'), {
         method: 'POST',
@@ -82,7 +77,6 @@ const getToken = (): string => getAccessToken();
       });
 
       const searchData = await searchResponse.json();
-      console.log('Search Location Response:', searchData);
 
       if (searchData.error) {
         setMessage('Error searching location: ' + searchData.error);
@@ -96,14 +90,9 @@ const getToken = (): string => getAccessToken();
         lng: searchData.lng,
       });
 
-      console.log('Location found:', searchData.name, searchData.lat, searchData.lng);
-
       if (searchData.jwtToken) {
-        storeToken(searchData.jwtToken);
+        storeToken({ accessToken: searchData.jwtToken });
       }
-
-      console.log('Fetching places...');
-      const placesToken = extractAccessToken(searchData.jwtToken) || getToken();
 
       const placesResponse = await fetch(buildPath('api/getPlaces'), {
         method: 'POST',
@@ -111,44 +100,40 @@ const getToken = (): string => getAccessToken();
         body: JSON.stringify({
           lat: searchData.lat,
           lng: searchData.lng,
-          jwtToken: placesToken,
+          search: searchQuery,
+          type: placeFilter,
+          jwtToken: searchData.jwtToken || getToken(),
         }),
       });
 
       const placesData = await placesResponse.json();
-      console.log('Places Response:', placesData);
 
       if (!placesData.error) {
         setPlaces(placesData.places || []);
         if (placesData.jwtToken) {
-          storeToken(placesData.jwtToken);
+          storeToken({ accessToken: placesData.jwtToken });
         }
       } else {
         console.error('Places API Error:', placesData.error);
       }
-
-      console.log('Fetching events...');
-      const eventsToken =
-        extractAccessToken(placesData.jwtToken) ||
-        extractAccessToken(searchData.jwtToken) ||
-        getToken();
 
       const eventsResponse = await fetch(buildPath('api/getEvents'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           location: searchQuery,
-          jwtToken: eventsToken,
+          startDate,
+          endDate,
+          jwtToken: placesData.jwtToken || searchData.jwtToken || getToken(),
         }),
       });
 
       const eventsData = await eventsResponse.json();
-      console.log('Events Response:', eventsData);
 
       if (!eventsData.error) {
         setEvents(eventsData.events || []);
         if (eventsData.jwtToken) {
-          storeToken(eventsData.jwtToken);
+          storeToken({ accessToken: eventsData.jwtToken });
         }
       } else {
         console.error('Events API Error:', eventsData.error);
@@ -167,12 +152,10 @@ const getToken = (): string => getAccessToken();
 
   const handleAddToTrip = (item: Place | Event) => {
     const isPlace = 'address' in item;
-
     const tripItem: TripItem = {
       type: isPlace ? 'place' : 'event',
       data: item,
     };
-
     setTripItems((prev) => [...prev, tripItem]);
     setMessage(`Added "${item.name}" to trip`);
   };
@@ -181,7 +164,7 @@ const getToken = (): string => getAccessToken();
     setTripItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleCreateTrip = async (tripLocation: string, items: TripItem[]) => {
+  const handleCreateTrip = async (locationName: string, items: TripItem[]) => {
     setSavingTrip(true);
 
     try {
@@ -192,7 +175,7 @@ const getToken = (): string => getAccessToken();
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user?.id,
-          location: tripLocation,
+          location: locationName,
           jwtToken: currentToken,
         }),
       });
@@ -206,10 +189,10 @@ const getToken = (): string => getAccessToken();
       }
 
       if (tripData.jwtToken) {
-        storeToken(tripData.jwtToken);
+        storeToken({ accessToken: tripData.jwtToken });
       }
 
-      let currentToken2 = extractAccessToken(tripData.jwtToken) || getToken();
+      let currentToken2 = tripData.jwtToken || getToken();
 
       for (const item of items) {
         const addResponse = await fetch(buildPath('api/addToTrip'), {
@@ -225,15 +208,9 @@ const getToken = (): string => getAccessToken();
 
         const addData = await addResponse.json();
 
-        if (addData.error) {
-          setMessage(addData.error);
-          setSavingTrip(false);
-          return;
-        }
-
         if (addData.jwtToken) {
-          currentToken2 = extractAccessToken(addData.jwtToken);
-          storeToken(addData.jwtToken);
+          currentToken2 = addData.jwtToken;
+          storeToken({ accessToken: addData.jwtToken });
         }
       }
 
@@ -254,16 +231,48 @@ const getToken = (): string => getAccessToken();
 
       <div id="searchContainer">
         <form onSubmit={handleSearch}>
-          <input
-            type="text"
-            id="locationInput"
-            placeholder="Search a city or location (e.g., Orlando, New York)"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <button type="submit" className="buttons" disabled={loading}>
-            {loading ? 'Searching...' : 'Search'}
-          </button>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              id="locationInput"
+              placeholder="Search a city or location (e.g., Orlando, New York)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ flex: 1 }}
+            />
+
+            <select
+              value={placeFilter}
+              onChange={(e) => setPlaceFilter(e.target.value)}
+              style={{ padding: '10px' }}
+            >
+              <option value="all">All</option>
+              <option value="things_to_do">Things to Do</option>
+              <option value="restaurant">Restaurants</option>
+              <option value="cafe">Cafes</option>
+              <option value="park">Parks</option>
+              <option value="museum">Museums</option>
+              <option value="bar">Bars</option>
+            </select>
+
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              style={{ padding: '10px' }}
+            />
+
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              style={{ padding: '10px' }}
+            />
+
+            <button type="submit" className="buttons" disabled={loading}>
+              {loading ? 'Searching...' : 'Search'}
+            </button>
+          </div>
         </form>
 
         {message && (
