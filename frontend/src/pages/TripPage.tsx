@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import PageTitle from '../components/PageTitle';
 import LoggedInName from '../components/LoggedInName';
 import { buildPath } from '../components/Path';
-import { storeToken } from '../tokenStorage';
+import { retrieveToken, storeToken } from '../tokenStorage';
 
 interface TripItem {
   type: 'place' | 'event';
@@ -26,7 +26,7 @@ const TripPage = () => {
   const user = userData ? JSON.parse(userData) : null;
 
   // Helper function to get the current token from localStorage (not a stale closure variable)
-  const getToken = () => localStorage.getItem('token_data');
+  const getToken = () => retrieveToken();
 
   useEffect(() => {
     loadTrips();
@@ -35,12 +35,19 @@ const TripPage = () => {
   const loadTrips = async () => {
     setLoading(true);
     try {
+      const currentToken = getToken();
+      if (!currentToken) {
+        setMessage('Session expired. Please log in again.');
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch(buildPath('api/getTrips'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user?.id,
-          jwtToken: getToken(),
+          jwtToken: currentToken,
         }),
       });
 

@@ -6,7 +6,7 @@ import PlacesList from '../components/PlacesList';
 import EventsList from '../components/EventsList';
 import TripPlanner from '../components/TripPlanner';
 import { buildPath } from '../components/Path';
-import { storeToken } from '../tokenStorage';
+import { retrieveToken, storeToken } from '../tokenStorage';
 
 interface Place {
   name: string;
@@ -46,7 +46,7 @@ const SearchPage = () => {
   const user = userData ? JSON.parse(userData) : null;
 
   // Helper function to get the current token from localStorage (not a stale closure variable)
-  const getToken = () => localStorage.getItem('token_data');
+  const getToken = () => retrieveToken();
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,6 +64,10 @@ const SearchPage = () => {
     try {
       console.log('Searching for location:', searchQuery);
       const currentToken = getToken();
+      if (!currentToken) {
+        setMessage('Session expired. Please log in again.');
+        return;
+      }
       console.log('Token:', currentToken ? `${currentToken.substring(0, 20)}...` : 'No token');
 
       // Call searchLocation endpoint
