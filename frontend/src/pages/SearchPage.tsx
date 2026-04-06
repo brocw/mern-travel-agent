@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import PageTitle from '../components/PageTitle';
 import LoggedInName from '../components/LoggedInName';
 import Map from '../components/Map';
@@ -6,7 +6,7 @@ import PlacesList from '../components/PlacesList';
 import EventsList from '../components/EventsList';
 import TripPlanner from '../components/TripPlanner';
 import { buildPath } from '../components/Path';
-import { retrieveToken, storeToken } from '../tokenStorage';
+import { storeToken, getAccessToken } from '../tokenStorage';
 
 interface Place {
   name: string;
@@ -16,6 +16,7 @@ interface Place {
   lat: number;
   lng: number;
   placeId: string;
+  image?: string;
 }
 
 interface Event {
@@ -33,6 +34,9 @@ interface TripItem {
 
 const SearchPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [placeFilter, setPlaceFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [location, setLocation] = useState<any>(null);
   const [places, setPlaces] = useState<Place[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -45,11 +49,62 @@ const SearchPage = () => {
   const userData = localStorage.getItem('user_data');
   const user = userData ? JSON.parse(userData) : null;
 
-  // Helper function to get the current token from localStorage (not a stale closure variable)
-  const getToken = () => retrieveToken();
+  const getToken = () => getAccessToken();
+
+  const fetchPlacesForLocation = async (
+    lat: number,
+    lng: number,
+    locationName: string,
+    fallbackToken?: string
+  ) => {
+    const placesResponse = await fetch(buildPath('api/getPlaces'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lat,
+        lng,
+        search: locationName,
+        type: placeFilter,
+        jwtToken: fallbackToken || getToken(),
+      }),
+    });
+
+    const placesData = await placesResponse.json();
+    if (!placesData.error) {
+      setPlaces(placesData.places || []);
+      if (placesData.jwtToken) {
+        storeToken({ accessToken: placesData.jwtToken });
+      }
+    } else {
+      setPlaces([]);
+      setMessage('Error searching places: ' + placesData.error);
+    }
+
+    return placesData;
+  };
+
+  useEffect(() => {
+    // When the place filter changes, re-run places search for the current location.
+    if (!location) return;
+
+    const refreshPlaces = async () => {
+      setLoading(true);
+      try {
+        const placesData = await fetchPlacesForLocation(location.lat, location.lng, location.name);
+        setMessage(`Found ${placesData.places?.length || 0} places and ${events.length || 0} events`);
+      } catch (error: any) {
+        setMessage('Error: ' + (error.message || 'Unknown error occurred'));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    refreshPlaces();
+  }, [placeFilter]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!searchQuery.trim()) {
       setMessage('Please enter a location');
       return;
@@ -62,14 +117,8 @@ const SearchPage = () => {
     setTripItems([]);
 
     try {
-      console.log('Searching for location:', searchQuery);
+      //console.log('Searching for location:', searchQuery);
       const currentToken = getToken();
-      if (!currentToken) {
-        setMessage('Session expired. Please log in again.');
-        return;
-      }
-      console.log('Token:', currentToken ? `${currentToken.substring(0, 20)}...` : 'No token');
-
       // Call searchLocation endpoint
       const searchResponse = await fetch(buildPath('api/searchLocation'), {
         method: 'POST',
@@ -81,7 +130,7 @@ const SearchPage = () => {
       });
 
       const searchData = await searchResponse.json();
-      console.log('Search Location Response:', searchData);
+      //console.log('Search Location Response:', searchData);
 
       if (searchData.error) {
         setMessage('Error searching location: ' + searchData.error);
@@ -96,51 +145,30 @@ const SearchPage = () => {
         lng: searchData.lng,
       });
 
-      console.log('Location found:', searchData.name, searchData.lat, searchData.lng);
-
       if (searchData.jwtToken) {
         storeToken({ accessToken: searchData.jwtToken });
       }
 
-      // Fetch places
-      console.log('Fetching places...');
-      const placesToken = searchData.jwtToken || getToken();
-      const placesResponse = await fetch(buildPath('api/getPlaces'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lat: searchData.lat,
-          lng: searchData.lng,
-          jwtToken: placesToken,
-        }),
-      });
-
-      const placesData = await placesResponse.json();
-      console.log('Places Response:', placesData);
-
-      if (!placesData.error) {
-        setPlaces(placesData.places || []);
-        if (placesData.jwtToken) {
-          storeToken({ accessToken: placesData.jwtToken });
-        }
-      } else {
-        console.error('Places API Error:', placesData.error);
-      }
+      const placesData = await fetchPlacesForLocation(
+        searchData.lat,
+        searchData.lng,
+        searchQuery,
+        searchData.jwtToken
+      );
 
       // Fetch events
-      console.log('Fetching events...');
-      const eventsToken = placesData.jwtToken || searchData.jwtToken || getToken();
       const eventsResponse = await fetch(buildPath('api/getEvents'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           location: searchQuery,
-          jwtToken: eventsToken,
+          startDate,
+          endDate,
+          jwtToken: placesData.jwtToken || searchData.jwtToken || getToken(),
         }),
       });
 
       const eventsData = await eventsResponse.json();
-      console.log('Events Response:', eventsData);
 
       if (!eventsData.error) {
         setEvents(eventsData.events || []);
@@ -241,16 +269,48 @@ const SearchPage = () => {
 
       <div id="searchContainer">
         <form onSubmit={handleSearch}>
-          <input
-            type="text"
-            id="locationInput"
-            placeholder="Search a city or location (e.g., Orlando, New York)"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <button type="submit" className="buttons" disabled={loading}>
-            {loading ? 'Searching...' : 'Search'}
-          </button>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              id="locationInput"
+              placeholder="Search a city or location (e.g., Orlando, New York)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ flex: 1 }}
+            />
+
+            <select
+              value={placeFilter}
+              onChange={(e) => setPlaceFilter(e.target.value)}
+              style={{ padding: '10px' }}
+            >
+              <option value="all">All</option>
+              <option value="things_to_do">Things to Do</option>
+              <option value="restaurant">Restaurants</option>
+              <option value="cafe">Cafes</option>
+              <option value="park">Parks</option>
+              <option value="museum">Museums</option>
+              <option value="bar">Bars</option>
+            </select>
+
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              style={{ padding: '10px' }}
+            />
+
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              style={{ padding: '10px' }}
+            />
+
+            <button type="submit" className="buttons" disabled={loading}>
+              {loading ? 'Searching...' : 'Search'}
+            </button>
+          </div>
         </form>
 
         {message && (

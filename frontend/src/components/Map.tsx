@@ -1,14 +1,24 @@
 import { useEffect, useRef } from 'react';
 
 interface Place {
+  name: string;
+  address: string;
+  rating?: number;
+  type: string;
   lat: number;
   lng: number;
+  placeId: string;
+  image?: string;
+}
+
+interface Location {
   name: string;
-  address?: string;
+  lat: number;
+  lng: number;
 }
 
 interface MapProps {
-  location: Place | null;
+  location: Location | null;
   places: Place[];
 }
 

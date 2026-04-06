@@ -5,17 +5,12 @@ exports.createToken = function (fn, ln, id) {
   return _createToken(fn, ln, id);
 };
 
-_createToken = function (fn, ln, id) {
+const _createToken = function (fn, ln, id) {
   try {
-    const expiration = new Date();
     const user = { userId: id, firstName: fn, lastName: ln };
-
-    console.log(process.env.ACCESS_TOKEN_SECRET);
-
-    // Uses the default value - see MERN C for further values
     const accessToken = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
+    return { accessToken };
 
-    var ret = { accessToken: accessToken };
   } catch (e) {
     var ret = { error: e.message };
   }
@@ -25,6 +20,7 @@ _createToken = function (fn, ln, id) {
 
 exports.isExpired = function (token) {
   try {
+    if (!token || typeof token !== "string") return true;
     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
     return false; // Token is valid
   } catch (err) {
@@ -35,21 +31,23 @@ exports.isExpired = function (token) {
 
 exports.refresh = function (token) {
   try {
-    if (!token) {
-      console.log('Token refresh error: No token provided');
-      return { error: 'No token provided' };
+    if (!token || typeof token !== "string") {
+      console.log("Token refresh error: No valid token provided");
+      return "";
     }
-    var ud = jwt.decode(token, { complete: true });
-    if (!ud || !ud.payload) {
-      console.log('Token refresh error: Invalid token structure');
-      return { error: 'Invalid token structure' };
+    const decoded = jwt.decode(token);
+    if (!decoded) {
+      console.log("Token refresh error: Invalid token structure");
+      return "";
     }
-    var userId = ud.payload.userId;
-    var firstName = ud.payload.firstName;
-    var lastName = ud.payload.lastName;
-    return _createToken(firstName, lastName, userId);
+    const userId = decoded.userId;
+    const firstName = decoded.firstName;
+    const lastName = decoded.lastName;
+
+    const refreshed = _createToken(firstName, lastName, userId);
+    return refreshed.accessToken || "";
   } catch (e) {
-    console.log('Token refresh error:', e.message);
-    return { error: 'Token refresh failed: ' + e.message };
+    console.log("Token refresh error:", e.message);
+    return "";
   }
 };

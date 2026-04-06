@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import PageTitle from '../components/PageTitle';
 import LoggedInName from '../components/LoggedInName';
 import { buildPath } from '../components/Path';
-import { retrieveToken, storeToken } from '../tokenStorage';
+import { getAccessToken, storeToken } from '../tokenStorage';
 
 interface TripItem {
   type: 'place' | 'event';
@@ -26,7 +26,7 @@ const TripPage = () => {
   const user = userData ? JSON.parse(userData) : null;
 
   // Helper function to get the current token from localStorage (not a stale closure variable)
-  const getToken = () => retrieveToken();
+  const getToken = () => getAccessToken();
 
   useEffect(() => {
     loadTrips();

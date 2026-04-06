@@ -33,7 +33,7 @@ function CardUI() {
         setMessage("API Error:" + res.error);
       } else {
         setMessage("Card has been added");
-        storeToken(res.jwtToken);
+        storeToken({ accessToken: res.jwtToken });
       }
     } catch (error: any) {
       setMessage(error.toString());
@@ -63,7 +63,7 @@ function CardUI() {
         }
       }
       setResults("Card(s) have been retrieved");
-      storeToken(res.jwtToken);
+      storeToken({ accessToken: res.jwtToken });
       setCardList(resultText);
     } catch (error: any) {
       alert(error.toString());

@@ -1,47 +1,44 @@
-const isLikelyJwt = (token: string) => token.split('.').length === 3;
-
-const extractToken = (tok: any): string => {
-  if (typeof tok === 'string') {
-    return tok;
-  }
-
-  if (tok && typeof tok === 'object') {
-    if (typeof tok.accessToken === 'string') {
-      return tok.accessToken;
-    }
-
-    if (typeof tok.jwtToken === 'string') {
-      return tok.jwtToken;
-    }
-  }
-
-  return '';
-};
-
 export function storeToken(tok: any): void {
   try {
-    const token = extractToken(tok);
-    if (!token || !isLikelyJwt(token)) {
-      return;
-    }
-
-    localStorage.setItem('token_data', token);
+    localStorage.setItem("token_data", JSON.stringify(tok));
   } catch (e) {
     console.log(e);
+  }
+} 
+
+export function retrieveToken(): any {
+  try {
+    const tokenData = localStorage.getItem("token_data");
+    if (!tokenData) return null;
+
+    const parsed = JSON.parse(tokenData);
+    // Backward compatible: support both { accessToken } and raw string storage.
+    if (typeof parsed === "string") return parsed;
+    return parsed?.accessToken || "";
+  } catch (e) {
+    console.log(e);
+    return null;
   }
 }
 
-export function retrieveToken(): string {
+export function getAccessToken(): string {
   try {
-    const token = localStorage.getItem('token_data') || '';
-    if (!token || !isLikelyJwt(token)) {
-      localStorage.removeItem('token_data');
-      return '';
-    }
+    const tokenData = localStorage.getItem("token_data");
+    if (!tokenData) return "";
 
-    return token;
+    const parsed = JSON.parse(tokenData);
+    if (typeof parsed === "string") return parsed;
+    return parsed.accessToken || "";
   } catch (e) {
     console.log(e);
-    return '';
+    return "";
+  }
+}
+
+export function removeToken(): void {
+  try {
+    localStorage.removeItem("token_data");
+  } catch (e) {
+    console.log(e);
   }
 }

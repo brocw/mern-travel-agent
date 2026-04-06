@@ -283,10 +283,9 @@ exports.setApp = function (app, client) {
   });
 
   app.post("/api/getPlaces", async (req, res, next) => {
-    // incoming: lat, lng, jwtToken, type (optional: "restaurant" | "things_to_do" | undefined = both)
+    // incoming: lat, lng, jwtToken, type (optional: all | things_to_do | restaurant | cafe | park | museum | bar)
     // outgoing: places[], error, jwtToken
     var token = require("./createJWT.js");
-
     const { lat, lng, jwtToken, type } = req.body;
 
     try {
@@ -298,11 +297,17 @@ exports.setApp = function (app, client) {
     }
 
     const typeConfig = {
-      restaurant: { keyword: "restaurant", placeType: "restaurant" },
-      things_to_do: { keyword: "things to do", placeType: "tourist_attraction" },
+      all: { keyword: "", placeType: null },
+      things_to_do: { keyword: "", placeType: "tourist_attraction" },
+      restaurant: { keyword: "", placeType: "restaurant" },
+      cafe: { keyword: "", placeType: "cafe" },
+      park: { keyword: "", placeType: "park" },
+      museum: { keyword: "", placeType: "museum" },
+      bar: { keyword: "", placeType: "bar" },
     };
 
-    const config = typeConfig[type] || { keyword: "things to do OR restaurant", placeType: null };
+    const requestedType = typeof type === "string" ? type.toLowerCase() : "all";
+    const config = typeConfig[requestedType] || typeConfig.all;
 
     var refreshedToken = null;
     try {
@@ -325,7 +330,7 @@ exports.setApp = function (app, client) {
       const url = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
       url.searchParams.append("location", `${lat},${lng}`);
       url.searchParams.append("radius", "5000");
-      url.searchParams.append("keyword", config.keyword);
+      if (config.keyword) url.searchParams.append("keyword", config.keyword);
       if (config.placeType) url.searchParams.append("type", config.placeType);
       url.searchParams.append("key", apiKey);
 
@@ -340,20 +345,34 @@ exports.setApp = function (app, client) {
         });
       }
 
-      const places = data.results.map((place) => ({
-        name: place.name,
-        address: place.vicinity,
-        rating: place.rating,
-        type: place.types?.[0] || "place",
-        lat: place.geometry.location.lat,
-        lng: place.geometry.location.lng,
-        placeId: place.place_id,
-        image: place.photos?.length > 0
-          ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${place.photos[0].photo_reference}&key=${apiKey}`
-          : null,
-      }));
+      if (data.results && data.results.length > 0) {
+        const places = data.results.map((place) => ({
+          name: place.name,
+          address: place.vicinity,
+          rating: place.rating,
+          type: place.types?.[0] || "place",
+          lat: place.geometry.location.lat,
+          lng: place.geometry.location.lng,
+          placeId: place.place_id,
+          image:
+            place.photos && place.photos.length > 0
+              ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${place.photos[0].photo_reference}&key=${apiKey}`
+              : "https://via.placeholder.com/300x200?text=Place",
+        }));
 
-      return res.status(200).json({ places, error: "", jwtToken: getRefreshedToken(refreshedToken) });
+        var refreshedToken = null;
+        try {
+          refreshedToken = token.refresh(jwtToken);
+        } catch (e) {
+          console.log(e.message);
+        }
+
+        var ret = { places, error: "", jwtToken: getRefreshedToken(refreshedToken) };
+        res.status(200).json(ret);
+        return;
+      }
+
+      //return res.status(200).json({ places, error: "", jwtToken: getRefreshedToken(refreshedToken) });
 
     } catch (e) {
       console.log("Places API Error:", e.toString());
