@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import PageTitle from '../components/PageTitle';
 import LoggedInName from '../components/LoggedInName';
 import Map from '../components/Map';
@@ -45,62 +45,10 @@ const SearchPage = () => {
   const [loading, setLoading] = useState(false);
   const [savingTrip, setSavingTrip] = useState(false);
 
-  // Get user data - token will be retrieved fresh before each API call
   const userData = localStorage.getItem('user_data');
   const user = userData ? JSON.parse(userData) : null;
 
   const getToken = () => getAccessToken();
-
-  const fetchPlacesForLocation = async (
-    lat: number,
-    lng: number,
-    locationName: string,
-    fallbackToken?: string
-  ) => {
-    const placesResponse = await fetch(buildPath('api/getPlaces'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        lat,
-        lng,
-        search: locationName,
-        type: placeFilter,
-        jwtToken: fallbackToken || getToken(),
-      }),
-    });
-
-    const placesData = await placesResponse.json();
-    if (!placesData.error) {
-      setPlaces(placesData.places || []);
-      if (placesData.jwtToken) {
-        storeToken({ accessToken: placesData.jwtToken });
-      }
-    } else {
-      setPlaces([]);
-      setMessage('Error searching places: ' + placesData.error);
-    }
-
-    return placesData;
-  };
-
-  useEffect(() => {
-    // When the place filter changes, re-run places search for the current location.
-    if (!location) return;
-
-    const refreshPlaces = async () => {
-      setLoading(true);
-      try {
-        const placesData = await fetchPlacesForLocation(location.lat, location.lng, location.name);
-        setMessage(`Found ${placesData.places?.length || 0} places and ${events.length || 0} events`);
-      } catch (error: any) {
-        setMessage('Error: ' + (error.message || 'Unknown error occurred'));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    refreshPlaces();
-  }, [placeFilter]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,9 +65,8 @@ const SearchPage = () => {
     setTripItems([]);
 
     try {
-      //console.log('Searching for location:', searchQuery);
       const currentToken = getToken();
-      // Call searchLocation endpoint
+
       const searchResponse = await fetch(buildPath('api/searchLocation'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -130,7 +77,6 @@ const SearchPage = () => {
       });
 
       const searchData = await searchResponse.json();
-      //console.log('Search Location Response:', searchData);
 
       if (searchData.error) {
         setMessage('Error searching location: ' + searchData.error);
@@ -138,7 +84,6 @@ const SearchPage = () => {
         return;
       }
 
-      // Store location and update token
       setLocation({
         name: searchData.name,
         lat: searchData.lat,
@@ -149,14 +94,29 @@ const SearchPage = () => {
         storeToken({ accessToken: searchData.jwtToken });
       }
 
-      const placesData = await fetchPlacesForLocation(
-        searchData.lat,
-        searchData.lng,
-        searchQuery,
-        searchData.jwtToken
-      );
+      const placesResponse = await fetch(buildPath('api/getPlaces'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lat: searchData.lat,
+          lng: searchData.lng,
+          search: searchQuery,
+          type: placeFilter,
+          jwtToken: searchData.jwtToken || getToken(),
+        }),
+      });
 
-      // Fetch events
+      const placesData = await placesResponse.json();
+
+      if (!placesData.error) {
+        setPlaces(placesData.places || []);
+        if (placesData.jwtToken) {
+          storeToken({ accessToken: placesData.jwtToken });
+        }
+      } else {
+        console.error('Places API Error:', placesData.error);
+      }
+
       const eventsResponse = await fetch(buildPath('api/getEvents'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -179,7 +139,9 @@ const SearchPage = () => {
         console.error('Events API Error:', eventsData.error);
       }
 
-      setMessage(`Found ${placesData.places?.length || 0} places and ${eventsData.events?.length || 0} events`);
+      setMessage(
+        `Found ${placesData.places?.length || 0} places and ${eventsData.events?.length || 0} events`
+      );
     } catch (error: any) {
       console.error('Search error:', error);
       setMessage('Error: ' + (error.message || 'Unknown error occurred'));
@@ -194,27 +156,26 @@ const SearchPage = () => {
       type: isPlace ? 'place' : 'event',
       data: item,
     };
-    setTripItems([...tripItems, tripItem]);
+    setTripItems((prev) => [...prev, tripItem]);
     setMessage(`Added "${item.name}" to trip`);
   };
 
   const handleRemoveFromTrip = (index: number) => {
-    const newItems = tripItems.filter((_, i) => i !== index);
-    setTripItems(newItems);
+    setTripItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleCreateTrip = async (location: string, items: TripItem[]) => {
+  const handleCreateTrip = async (locationName: string, items: TripItem[]) => {
     setSavingTrip(true);
+
     try {
       const currentToken = getToken();
 
-      // Create trip
       const tripResponse = await fetch(buildPath('api/createTrip'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user?.id,
-          location: location,
+          location: locationName,
           jwtToken: currentToken,
         }),
       });
@@ -231,8 +192,8 @@ const SearchPage = () => {
         storeToken({ accessToken: tripData.jwtToken });
       }
 
-      // Add items to trip
       let currentToken2 = tripData.jwtToken || getToken();
+
       for (const item of items) {
         const addResponse = await fetch(buildPath('api/addToTrip'), {
           method: 'POST',
@@ -246,6 +207,7 @@ const SearchPage = () => {
         });
 
         const addData = await addResponse.json();
+
         if (addData.jwtToken) {
           currentToken2 = addData.jwtToken;
           storeToken({ accessToken: addData.jwtToken });
@@ -314,7 +276,13 @@ const SearchPage = () => {
         </form>
 
         {message && (
-          <p id="searchMessage" style={{ color: message.includes('Error') ? '#d32f2f' : '#333', marginTop: '10px' }}>
+          <p
+            id="searchMessage"
+            style={{
+              color: message.includes('Error') ? '#d32f2f' : '#333',
+              marginTop: '10px',
+            }}
+          >
             {message}
           </p>
         )}
@@ -326,13 +294,22 @@ const SearchPage = () => {
             <div id="mapSection">
               <Map location={location} places={places} />
             </div>
+
             <div id="placesSection">
-              <PlacesList places={places} onAddToTrip={handleAddToTrip} loading={loading} />
+              <PlacesList
+                places={places}
+                onAddToTrip={handleAddToTrip}
+                loading={loading}
+              />
             </div>
           </div>
 
           <div id="eventsSection">
-            <EventsList events={events} onAddToTrip={handleAddToTrip} loading={loading} />
+            <EventsList
+              events={events}
+              onAddToTrip={handleAddToTrip}
+              loading={loading}
+            />
           </div>
 
           <div id="tripSection">

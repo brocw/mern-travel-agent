@@ -10,22 +10,19 @@ const _createToken = function (fn, ln, id) {
     const user = { userId: id, firstName: fn, lastName: ln };
     const accessToken = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
     return { accessToken };
-
   } catch (e) {
-    var ret = { error: e.message };
+    return { error: e.message };
   }
-
-  return ret;
 };
 
 exports.isExpired = function (token) {
   try {
     if (!token || typeof token !== "string") return true;
     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-    return false; // Token is valid
+    return false;
   } catch (err) {
     console.log("Token verification error:", err.message);
-    return true; // Token is expired or invalid
+    return true;
   }
 };
 
@@ -35,11 +32,13 @@ exports.refresh = function (token) {
       console.log("Token refresh error: No valid token provided");
       return "";
     }
+
     const decoded = jwt.decode(token);
     if (!decoded) {
       console.log("Token refresh error: Invalid token structure");
       return "";
     }
+
     const userId = decoded.userId;
     const firstName = decoded.firstName;
     const lastName = decoded.lastName;

@@ -25,7 +25,7 @@ const TripPage = () => {
   const userData = localStorage.getItem('user_data');
   const user = userData ? JSON.parse(userData) : null;
 
-  // Helper function to get the current token from localStorage (not a stale closure variable)
+  // Always send the raw JWT string, not the serialized token object.
   const getToken = () => getAccessToken();
 
   useEffect(() => {
@@ -35,19 +35,12 @@ const TripPage = () => {
   const loadTrips = async () => {
     setLoading(true);
     try {
-      const currentToken = getToken();
-      if (!currentToken) {
-        setMessage('Session expired. Please log in again.');
-        setLoading(false);
-        return;
-      }
-
       const response = await fetch(buildPath('api/getTrips'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user?.id,
-          jwtToken: currentToken,
+          jwtToken: getToken(),
         }),
       });
 
