@@ -74,6 +74,8 @@ jobs:
             ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}
             GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
             GOOGLE_PLACES_API_KEY=${{ secrets.GOOGLE_PLACES_API_KEY }}
+            TICKETMASTER_API_KEY=${{ secrets.TICKETMASTER_API_KEY }}
+            TICKETMASTER_CONSUMER_KEY=${{ secrets.TICKETMASTER_CONSUMER_KEY }}
             EOF
 
             # Install dependencies
