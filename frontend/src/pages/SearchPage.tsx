@@ -5,6 +5,7 @@ import Map from '../components/Map';
 import PlacesList from '../components/PlacesList';
 import EventsList from '../components/EventsList';
 import TripPlanner from '../components/TripPlanner';
+import FlightTickets from '../components/FlightTickets';
 import { buildPath } from '../components/Path';
 import { storeToken, getAccessToken } from '../tokenStorage';
 
@@ -309,6 +310,13 @@ const SearchPage = () => {
               events={events}
               onAddToTrip={handleAddToTrip}
               loading={loading}
+            />
+          </div>
+
+          <div id="eventsSection">
+            <FlightTickets
+              defaultOutboundDate={startDate}
+              defaultReturnDate={endDate}
             />
           </div>
 

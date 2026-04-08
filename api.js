@@ -563,6 +563,113 @@ app.post("/api/getEvents", async (req, res, next) => {
   }
 });
 
+app.post("/api/searchFlights", async (req, res, next) => {
+  // incoming:
+  //  Step 1: departureId, arrivalId, outboundDate, returnDate?, tripType, adults?, travelClass?, jwtToken
+  //  Step 2: departureToken (+ optional route/date fields), jwtToken
+  //  Step 3: bookingToken (+ optional route/date fields), jwtToken
+  // outgoing: flights[], bookingOptions[], phase, error, jwtToken
+  var token = require("./createJWT.js");
+  const {
+    departureId,
+    arrivalId,
+    outboundDate,
+    returnDate,
+    tripType,
+    adults,
+    travelClass,
+    departureToken,
+    bookingToken,
+    jwtToken,
+  } = req.body;
+
+  try {
+    if (token.isExpired(jwtToken)) {
+      return res.status(200).json({ error: "The JWT is no longer valid.", jwtToken: "" });
+    }
+  } catch (e) {
+    console.log(e.message);
+  }
+
+  const refreshedToken = (() => {
+    try {
+      return token.refresh(jwtToken);
+    } catch (e) {
+      console.log(e.message);
+      return null;
+    }
+  })();
+
+  const serpApiKey = process.env.SERPAPI_KEY;
+  if (!serpApiKey) {
+    return res.status(200).json({
+      flights: [],
+      bookingOptions: [],
+      phase: "none",
+      error: "SERPAPI_KEY is not configured on the server.",
+      jwtToken: getRefreshedToken(refreshedToken),
+    });
+  }
+
+  try {
+    const { getJson } = require("serpapi");
+    const parsedTripType = Number(tripType) || 1;
+    const basePayload = {
+      engine: "google_flights",
+      api_key: serpApiKey,
+      ...(departureId ? { departure_id: String(departureId).toUpperCase().trim() } : {}),
+      ...(arrivalId ? { arrival_id: String(arrivalId).toUpperCase().trim() } : {}),
+      ...(outboundDate ? { outbound_date: outboundDate } : {}),
+      ...(returnDate && parsedTripType === 1 ? { return_date: returnDate } : {}),
+      type: parsedTripType,
+      adults: Number(adults) || 1,
+      travel_class: Number(travelClass) || 1,
+      currency: "USD",
+      hl: "en",
+    };
+
+    let payload = { ...basePayload };
+    let phase = "initial";
+
+    if (bookingToken) {
+      payload = { ...basePayload, booking_token: bookingToken };
+      phase = "booking";
+    } else if (departureToken) {
+      payload = { ...basePayload, departure_token: departureToken };
+      phase = "returns";
+    } else if (!departureId || !arrivalId || !outboundDate) {
+      return res.status(200).json({
+        flights: [],
+        bookingOptions: [],
+        phase: "none",
+        error: "Departure airport, arrival airport, and departure date are required.",
+        jwtToken: getRefreshedToken(refreshedToken),
+      });
+    }
+
+    const response = await getJson(payload);
+    const flights = response?.best_flights || response?.other_flights || [];
+    const bookingOptions =
+      response?.booking_options || response?.book_with || response?.booking_flights || [];
+
+    return res.status(200).json({
+      flights,
+      bookingOptions,
+      phase,
+      error: "",
+      jwtToken: getRefreshedToken(refreshedToken),
+    });
+  } catch (e) {
+    return res.status(200).json({
+      flights: [],
+      bookingOptions: [],
+      phase: "none",
+      error: e.toString(),
+      jwtToken: getRefreshedToken(refreshedToken),
+    });
+  }
+});
+
   app.post("/api/createTrip", async (req, res, next) => {
     // incoming: userId, location, jwtToken
     // outgoing: tripId, error, jwtToken
