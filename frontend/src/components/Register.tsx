@@ -1,14 +1,5 @@
 import { useState } from "react";
 import { buildPath } from "./Path";
-import { storeToken } from "../tokenStorage";
-import { jwtDecode } from "jwt-decode";
-import type { JwtPayload } from "jwt-decode";
-
-interface MyJwtPayload extends JwtPayload {
-  firstName: string;
-  lastName: string;
-  userId: number;
-}
 
 function Register() {
   const [message, setMessage] = useState("");
@@ -44,33 +35,12 @@ function Register() {
         return;
       }
 
-      const { accessToken } = res;
-      storeToken(res);
+      // Show success message then redirect to login
+      setMessage("Registration successful! Please check your email to verify your account.");
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 3000);
 
-      const decoded = jwtDecode(accessToken) as MyJwtPayload;
-
-      try {
-        var ud = decoded;
-        var userId = ud.userId;
-        var fn = ud.firstName;
-        var ln = ud.lastName;
-
-        console.log(fn);
-        console.log(ln);
-
-        if (!userId || userId <= 0) {
-          setMessage("Registration failed.");
-        } else {
-          var user = { firstName: fn, lastName: ln, id: userId };
-          localStorage.setItem("user_data", JSON.stringify(user));
-
-          setMessage("");
-          window.location.href = "/search";
-        }
-      } catch (e) {
-        console.log(e);
-        return;
-      }
     } catch (error: any) {
       alert(error.toString());
       return;

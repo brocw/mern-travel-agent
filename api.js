@@ -10,8 +10,6 @@ exports.setApp = function (app, client) {
   };
   
   app.post("/api/addCard", async (req, res, next) => {
-    // incoming: userId, color
-    // outgoing: error
     var token = require("./createJWT.js");
     const { userId, card, jwtToken } = req.body;
 
@@ -47,18 +45,12 @@ exports.setApp = function (app, client) {
   });
 
   app.post("/api/register", async (req, res, next) => {
-    // incoming: firstName, lastName, login, email, password
-    // outgoing: id, firstName, lastName, error, accessToken
-
     var error = "";
-
     console.log(req.body);
 
     const { firstName, lastName, login, email, password } = req.body;
-
     const db = client.db("COP4331Cards");
 
-    // Check if user already exists
     const existingUser = await db
       .collection("Users")
       .findOne({ Login: login });
@@ -78,10 +70,10 @@ exports.setApp = function (app, client) {
     }
 
     try {
-      // Get the next userId
       const userCount = await db.collection("Users").countDocuments();
       const newUserId = userCount + 1;
 
+      // ✅ CHANGE 1 - Added IsVerified: false and sendVerificationEmail
       const newUser = {
         UserId: newUserId,
         FirstName: firstName,
@@ -89,29 +81,30 @@ exports.setApp = function (app, client) {
         Login: login,
         Email: email,
         Password: password,
+        IsVerified: false,
       };
 
       await db.collection("Users").insertOne(newUser);
 
-      const token = require("./createJWT.js");
-      const ret = token.createToken(firstName, lastName, newUserId);
-      res.status(200).json(ret);
+      const { sendVerificationEmail } = require("./sendVerificationEmail.js");
+      await sendVerificationEmail(email, newUserId);
+
+      res.status(200).json({
+        error: "",
+        message: "Registration successful! Please check your email to verify your account."
+      });
     } catch (e) {
       res.status(200).json({ error: e.message });
     }
   });
 
   app.post("/api/login", async (req, res, next) => {
-    // incoming: login, password
-    // outgoing: id, firstName, lastName, error
-
     var error = "";
-
     console.log(req.body);
 
     const { login, password } = req.body;
-
     const db = client.db("COP4331Cards");
+
     const results = await db
       .collection("Users")
       .find({ Login: login, Password: password })
@@ -120,11 +113,16 @@ exports.setApp = function (app, client) {
     var id = -1;
     var fn = "";
     var ln = "";
-
     var ret;
 
     if (results.length > 0) {
-      // console.log(results);
+      // ✅ CHANGE 2 - Block unverified users
+      if (!results[0].IsVerified) {
+        ret = { error: "Please verify your email before logging in." };
+        res.status(200).json(ret);
+        return;
+      }
+
       id = results[0].UserId;
       fn = results[0].FirstName;
       ln = results[0].LastName;
@@ -143,8 +141,6 @@ exports.setApp = function (app, client) {
   });
 
   app.post("/api/searchCards", async (req, res, next) => {
-    // incoming: userId, search
-    // outgoing: results[], error
     var token = require("./createJWT.js");
     var error = "";
 
@@ -184,8 +180,6 @@ exports.setApp = function (app, client) {
   });
 
   app.post("/api/searchLocation", async (req, res, next) => {
-    // incoming: search, jwtToken
-    // outgoing: lat, lng, name, error, jwtToken
     var token = require("./createJWT.js");
     var error = "";
 
@@ -200,7 +194,6 @@ exports.setApp = function (app, client) {
       console.log(e.message);
     }
 
-    // Mock data for common cities (for testing without needing API key)
     const mockLocations = {
       'orlando': { lat: 28.5421, lng: -81.3723, name: 'Orlando, FL, USA' },
       'new york': { lat: 40.7128, lng: -74.0060, name: 'New York, NY, USA' },
@@ -218,12 +211,10 @@ exports.setApp = function (app, client) {
       const searchLower = search.toLowerCase().trim();
       var locationData = null;
 
-      // First try mock data (for testing)
       if (mockLocations[searchLower]) {
         locationData = mockLocations[searchLower];
         console.log('Using mock location data for:', search);
       } else {
-        // Try real Google Maps API
         const apiKey = process.env.GOOGLE_MAPS_API_KEY;
         console.log('Geocoding request for:', search, 'with key:', apiKey ? `${apiKey.substring(0, 10)}...` : 'NO KEY');
 
@@ -284,395 +275,388 @@ exports.setApp = function (app, client) {
   });
 
   app.post("/api/getPlaces", async (req, res, next) => {
-  var token = require("./createJWT.js");
+    var token = require("./createJWT.js");
 
-  const { lat, lng, jwtToken, type } = req.body;
+    const { lat, lng, jwtToken, type } = req.body;
 
-  try {
-    if (token.isExpired(jwtToken)) {
-      return res.status(200).json({
-        error: "The JWT is no longer valid.",
-        jwtToken: "",
-      });
+    try {
+      if (token.isExpired(jwtToken)) {
+        return res.status(200).json({
+          error: "The JWT is no longer valid.",
+          jwtToken: "",
+        });
+      }
+    } catch (e) {
+      console.log(e.message);
     }
-  } catch (e) {
-    console.log(e.message);
-  }
 
-  let refreshedToken = null;
-  try {
-    refreshedToken = token.refresh(jwtToken);
-  } catch (e) {
-    console.log(e.message);
-  }
+    let refreshedToken = null;
+    try {
+      refreshedToken = token.refresh(jwtToken);
+    } catch (e) {
+      console.log(e.message);
+    }
 
-  const apiKey =
-    process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    const apiKey =
+      process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
 
-  const typeConfig = {
-    all: { keyword: "things to do", placeType: null, radius: "10000" },
-    things_to_do: { keyword: "things to do", placeType: "tourist_attraction", radius: "12000" },
-    restaurant: { keyword: "restaurant", placeType: "restaurant", radius: "10000" },
-    cafe: { keyword: "cafe", placeType: "cafe", radius: "10000" },
-    park: { keyword: "park", placeType: "park", radius: "15000" },
-    museum: { keyword: "museum", placeType: "museum", radius: "20000" },
-    bar: { keyword: "bar", placeType: "bar", radius: "10000" },
-  };
+    const typeConfig = {
+      all: { keyword: "things to do", placeType: null, radius: "10000" },
+      things_to_do: { keyword: "things to do", placeType: "tourist_attraction", radius: "12000" },
+      restaurant: { keyword: "restaurant", placeType: "restaurant", radius: "10000" },
+      cafe: { keyword: "cafe", placeType: "cafe", radius: "10000" },
+      park: { keyword: "park", placeType: "park", radius: "15000" },
+      museum: { keyword: "museum", placeType: "museum", radius: "20000" },
+      bar: { keyword: "bar", placeType: "bar", radius: "10000" },
+    };
 
-  const config = typeConfig[type] || typeConfig.all;
+    const config = typeConfig[type] || typeConfig.all;
 
-  const mockPlaces = [
-    {
-      name: "Downtown Museums",
-      address: "Museum District",
-      rating: 4.7,
-      type: "museum",
-      lat: lat + 0.02,
-      lng: lng + 0.02,
-      placeId: "mock1",
-      image: "https://via.placeholder.com/300x200?text=Place",
-    },
-    {
-      name: "Central Park Recreation",
-      address: "Central Park Area",
-      rating: 4.8,
-      type: "park",
-      lat: lat - 0.01,
-      lng: lng - 0.01,
-      placeId: "mock2",
-      image: "https://via.placeholder.com/300x200?text=Place",
-    },
-    {
-      name: "Historic District Cafe",
-      address: "Historic District",
-      rating: 4.5,
-      type: "cafe",
-      lat: lat + 0.01,
-      lng: lng - 0.02,
-      placeId: "mock3",
-      image: "https://via.placeholder.com/300x200?text=Place",
-    },
-    {
-      name: "Waterfront Dining",
-      address: "Waterfront Promenade",
-      rating: 4.6,
-      type: "restaurant",
-      lat: lat - 0.02,
-      lng: lng + 0.01,
-      placeId: "mock4",
-      image: "https://via.placeholder.com/300x200?text=Place",
-    },
-    {
-      name: "Art Gallery Downtown",
-      address: "Arts District",
-      rating: 4.4,
-      type: "museum",
-      lat: lat,
-      lng: lng + 0.02,
-      placeId: "mock5",
-      image: "https://via.placeholder.com/300x200?text=Place",
-    },
-  ];
+    const mockPlaces = [
+      {
+        name: "Downtown Museums",
+        address: "Museum District",
+        rating: 4.7,
+        type: "museum",
+        lat: lat + 0.02,
+        lng: lng + 0.02,
+        placeId: "mock1",
+        image: "https://via.placeholder.com/300x200?text=Place",
+      },
+      {
+        name: "Central Park Recreation",
+        address: "Central Park Area",
+        rating: 4.8,
+        type: "park",
+        lat: lat - 0.01,
+        lng: lng - 0.01,
+        placeId: "mock2",
+        image: "https://via.placeholder.com/300x200?text=Place",
+      },
+      {
+        name: "Historic District Cafe",
+        address: "Historic District",
+        rating: 4.5,
+        type: "cafe",
+        lat: lat + 0.01,
+        lng: lng - 0.02,
+        placeId: "mock3",
+        image: "https://via.placeholder.com/300x200?text=Place",
+      },
+      {
+        name: "Waterfront Dining",
+        address: "Waterfront Promenade",
+        rating: 4.6,
+        type: "restaurant",
+        lat: lat - 0.02,
+        lng: lng + 0.01,
+        placeId: "mock4",
+        image: "https://via.placeholder.com/300x200?text=Place",
+      },
+      {
+        name: "Art Gallery Downtown",
+        address: "Arts District",
+        rating: 4.4,
+        type: "museum",
+        lat: lat,
+        lng: lng + 0.02,
+        placeId: "mock5",
+        image: "https://via.placeholder.com/300x200?text=Place",
+      },
+    ];
 
-  try {
-    console.log("Fetching places for:", lat, lng, "type:", type);
+    try {
+      console.log("Fetching places for:", lat, lng, "type:", type);
 
-    if (!apiKey || apiKey === "your_google_places_api_key_here") {
-      console.log("Using mock places because API key is missing");
+      if (!apiKey || apiKey === "your_google_places_api_key_here") {
+        console.log("Using mock places because API key is missing");
+        return res.status(200).json({
+          places: mockPlaces,
+          error: "",
+          jwtToken: getRefreshedToken(refreshedToken),
+        });
+      }
+
+      const url = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
+      url.searchParams.append("location", `${lat},${lng}`);
+      url.searchParams.append("radius", config.radius);
+      url.searchParams.append("keyword", config.keyword);
+      if (config.placeType) {
+        url.searchParams.append("type", config.placeType);
+      }
+      url.searchParams.append("key", apiKey);
+
+      const response = await fetch(url.toString());
+      const data = await response.json();
+
+      console.log("Places API Response:", data);
+
+      if (!data.results || data.results.length === 0) {
+        return res.status(200).json({
+          places: [],
+          error: data.error_message || "No places found for this location.",
+          jwtToken: getRefreshedToken(refreshedToken),
+        });
+      }
+
+      const places = data.results.map((place) => ({
+        name: place.name,
+        address: place.vicinity,
+        rating: place.rating,
+        type: place.types?.[0] || "place",
+        lat: place.geometry.location.lat,
+        lng: place.geometry.location.lng,
+        placeId: place.place_id,
+        image:
+          place.photos?.length > 0
+            ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${place.photos[0].photo_reference}&key=${apiKey}`
+            : "https://via.placeholder.com/300x200?text=Place",
+      }));
+
+      return res.status(200).json({
+        places,
+        error: "",
+        jwtToken: getRefreshedToken(refreshedToken),
+      });
+    } catch (e) {
+      console.log("Places API Error:", e.toString());
+
       return res.status(200).json({
         places: mockPlaces,
         error: "",
         jwtToken: getRefreshedToken(refreshedToken),
       });
     }
+  });
 
-    const url = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
-    url.searchParams.append("location", `${lat},${lng}`);
-    url.searchParams.append("radius", config.radius);
-    url.searchParams.append("keyword", config.keyword);
-    if (config.placeType) {
-      url.searchParams.append("type", config.placeType);
+  app.post("/api/getEvents", async (req, res, next) => {
+    var token = require("./createJWT.js");
+    var error = "";
+
+    const { location, startDate, endDate, jwtToken } = req.body;
+
+    try {
+      if (token.isExpired(jwtToken)) {
+        var r = { error: "The JWT is not longer valid.", jwtToken: "" };
+        res.status(200).json(r);
+        return;
+      }
+    } catch (e) {
+      console.log(e.message);
     }
-    url.searchParams.append("key", apiKey);
 
-    const response = await fetch(url.toString());
-    const data = await response.json();
+    const mockEvents = [
+      {
+        name: "Live Jazz Concert",
+        date: "2026-04-15",
+        venue: "Downtown Concert Hall",
+        ticketUrl: "#",
+        image: "https://via.placeholder.com/300x200?text=Jazz+Concert",
+      },
+      {
+        name: "Rock Festival 2026",
+        date: "2026-05-20",
+        venue: "City Park Amphitheater",
+        ticketUrl: "#",
+        image: "https://via.placeholder.com/300x200?text=Rock+Festival",
+      },
+      {
+        name: "Comedy Night Show",
+        date: "2026-04-10",
+        venue: "Comedy Club Downtown",
+        ticketUrl: "#",
+        image: "https://via.placeholder.com/300x200?text=Comedy",
+      },
+    ];
 
-    console.log("Places API Response:", data);
+    try {
+      console.log("Fetching events for:", location, startDate, endDate);
 
-    if (!data.results || data.results.length === 0) {
+      const apiKey = process.env.TICKETMASTER_API_KEY;
+
+      if (apiKey && apiKey !== "your_ticketmaster_api_key_here") {
+        const url = new URL(
+          "https://app.ticketmaster.com/discovery/v2/events.json"
+        );
+
+        url.searchParams.append("city", location);
+        url.searchParams.append("apikey", apiKey);
+        url.searchParams.append("size", "20");
+
+        if (startDate) {
+          url.searchParams.append("startDateTime", `${startDate}T00:00:00Z`);
+        }
+
+        if (endDate) {
+          url.searchParams.append("endDateTime", `${endDate}T23:59:59Z`);
+        }
+
+        const response = await fetch(url.toString());
+        const data = await response.json();
+
+        console.log("Events API Response:", data);
+
+        let events = [];
+        if (data._embedded && data._embedded.events) {
+          events = data._embedded.events.map((event) => ({
+            name: event.name,
+            date: event.dates?.start?.localDate,
+            venue: event._embedded?.venues?.[0]?.name || "Location not available",
+            ticketUrl: event.url,
+            image: event.images?.[0]?.url,
+          }));
+
+          let refreshedToken = null;
+          try {
+            refreshedToken = token.refresh(jwtToken);
+          } catch (e) {
+            console.log(e.message);
+          }
+
+          return res.status(200).json({
+            events,
+            error: "",
+            jwtToken: getRefreshedToken(refreshedToken),
+          });
+        }
+      }
+
+      console.log("Using mock events data");
+
+      let refreshedToken = null;
+      try {
+        refreshedToken = token.refresh(jwtToken);
+      } catch (e) {
+        console.log(e.message);
+      }
+
       return res.status(200).json({
-        places: [],
-        error: data.error_message || "No places found for this location.",
+        events: mockEvents,
+        error: "",
+        jwtToken: getRefreshedToken(refreshedToken),
+      });
+    } catch (e) {
+      error = e.toString();
+      console.log("Events API Error:", error);
+
+      let refreshedToken = null;
+      try {
+        refreshedToken = token.refresh(jwtToken);
+      } catch (e2) {
+        console.log(e2.message);
+      }
+
+      return res.status(200).json({
+        events: mockEvents,
+        error: "",
         jwtToken: getRefreshedToken(refreshedToken),
       });
     }
+  });
 
-    const places = data.results.map((place) => ({
-      name: place.name,
-      address: place.vicinity,
-      rating: place.rating,
-      type: place.types?.[0] || "place",
-      lat: place.geometry.location.lat,
-      lng: place.geometry.location.lng,
-      placeId: place.place_id,
-      image:
-        place.photos?.length > 0
-          ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${place.photos[0].photo_reference}&key=${apiKey}`
-          : "https://via.placeholder.com/300x200?text=Place",
-    }));
+  app.post("/api/searchFlights", async (req, res, next) => {
+    var token = require("./createJWT.js");
+    const {
+      departureId,
+      arrivalId,
+      outboundDate,
+      returnDate,
+      tripType,
+      adults,
+      travelClass,
+      departureToken,
+      bookingToken,
+      jwtToken,
+    } = req.body;
 
-    return res.status(200).json({
-      places,
-      error: "",
-      jwtToken: getRefreshedToken(refreshedToken),
-    });
-  } catch (e) {
-    console.log("Places API Error:", e.toString());
-
-    return res.status(200).json({
-      places: mockPlaces,
-      error: "",
-      jwtToken: getRefreshedToken(refreshedToken),
-    });
-  }
-});
-
-app.post("/api/getEvents", async (req, res, next) => {
-  var token = require("./createJWT.js");
-  var error = "";
-
-  const { location, startDate, endDate, jwtToken } = req.body;
-
-  try {
-    if (token.isExpired(jwtToken)) {
-      var r = { error: "The JWT is not longer valid.", jwtToken: "" };
-      res.status(200).json(r);
-      return;
-    }
-  } catch (e) {
-    console.log(e.message);
-  }
-
-  const mockEvents = [
-    {
-      name: "Live Jazz Concert",
-      date: "2026-04-15",
-      venue: "Downtown Concert Hall",
-      ticketUrl: "#",
-      image: "https://via.placeholder.com/300x200?text=Jazz+Concert",
-    },
-    {
-      name: "Rock Festival 2026",
-      date: "2026-05-20",
-      venue: "City Park Amphitheater",
-      ticketUrl: "#",
-      image: "https://via.placeholder.com/300x200?text=Rock+Festival",
-    },
-    {
-      name: "Comedy Night Show",
-      date: "2026-04-10",
-      venue: "Comedy Club Downtown",
-      ticketUrl: "#",
-      image: "https://via.placeholder.com/300x200?text=Comedy",
-    },
-  ];
-
-  try {
-    console.log("Fetching events for:", location, startDate, endDate);
-
-    const apiKey = process.env.TICKETMASTER_API_KEY;
-
-    if (apiKey && apiKey !== "your_ticketmaster_api_key_here") {
-      const url = new URL(
-        "https://app.ticketmaster.com/discovery/v2/events.json"
-      );
-
-      url.searchParams.append("city", location);
-      url.searchParams.append("apikey", apiKey);
-      url.searchParams.append("size", "20");
-
-      if (startDate) {
-        url.searchParams.append("startDateTime", `${startDate}T00:00:00Z`);
-      }
-
-      if (endDate) {
-        url.searchParams.append("endDateTime", `${endDate}T23:59:59Z`);
-      }
-
-      const response = await fetch(url.toString());
-      const data = await response.json();
-
-      console.log("Events API Response:", data);
-
-      let events = [];
-      if (data._embedded && data._embedded.events) {
-        events = data._embedded.events.map((event) => ({
-          name: event.name,
-          date: event.dates?.start?.localDate,
-          venue: event._embedded?.venues?.[0]?.name || "Location not available",
-          ticketUrl: event.url,
-          image: event.images?.[0]?.url,
-        }));
-
-        let refreshedToken = null;
-        try {
-          refreshedToken = token.refresh(jwtToken);
-        } catch (e) {
-          console.log(e.message);
-        }
-
-        return res.status(200).json({
-          events,
-          error: "",
-          jwtToken: getRefreshedToken(refreshedToken),
-        });
-      }
-    }
-
-    console.log("Using mock events data");
-
-    let refreshedToken = null;
     try {
-      refreshedToken = token.refresh(jwtToken);
+      if (token.isExpired(jwtToken)) {
+        return res.status(200).json({ error: "The JWT is no longer valid.", jwtToken: "" });
+      }
     } catch (e) {
       console.log(e.message);
     }
 
-    return res.status(200).json({
-      events: mockEvents,
-      error: "",
-      jwtToken: getRefreshedToken(refreshedToken),
-    });
-  } catch (e) {
-    error = e.toString();
-    console.log("Events API Error:", error);
+    const refreshedToken = (() => {
+      try {
+        return token.refresh(jwtToken);
+      } catch (e) {
+        console.log(e.message);
+        return null;
+      }
+    })();
 
-    let refreshedToken = null;
-    try {
-      refreshedToken = token.refresh(jwtToken);
-    } catch (e2) {
-      console.log(e2.message);
-    }
-
-    return res.status(200).json({
-      events: mockEvents,
-      error: "",
-      jwtToken: getRefreshedToken(refreshedToken),
-    });
-  }
-});
-
-app.post("/api/searchFlights", async (req, res, next) => {
-  // incoming:
-  //  Step 1: departureId, arrivalId, outboundDate, returnDate?, tripType, adults?, travelClass?, jwtToken
-  //  Step 2: departureToken (+ optional route/date fields), jwtToken
-  //  Step 3: bookingToken (+ optional route/date fields), jwtToken
-  // outgoing: flights[], bookingOptions[], phase, error, jwtToken
-  var token = require("./createJWT.js");
-  const {
-    departureId,
-    arrivalId,
-    outboundDate,
-    returnDate,
-    tripType,
-    adults,
-    travelClass,
-    departureToken,
-    bookingToken,
-    jwtToken,
-  } = req.body;
-
-  try {
-    if (token.isExpired(jwtToken)) {
-      return res.status(200).json({ error: "The JWT is no longer valid.", jwtToken: "" });
-    }
-  } catch (e) {
-    console.log(e.message);
-  }
-
-  const refreshedToken = (() => {
-    try {
-      return token.refresh(jwtToken);
-    } catch (e) {
-      console.log(e.message);
-      return null;
-    }
-  })();
-
-  const serpApiKey = process.env.SERPAPI_KEY;
-  if (!serpApiKey) {
-    return res.status(200).json({
-      flights: [],
-      bookingOptions: [],
-      phase: "none",
-      error: "SERPAPI_KEY is not configured on the server.",
-      jwtToken: getRefreshedToken(refreshedToken),
-    });
-  }
-
-  try {
-    const { getJson } = require("serpapi");
-    const parsedTripType = Number(tripType) || 1;
-    const basePayload = {
-      engine: "google_flights",
-      api_key: serpApiKey,
-      ...(departureId ? { departure_id: String(departureId).toUpperCase().trim() } : {}),
-      ...(arrivalId ? { arrival_id: String(arrivalId).toUpperCase().trim() } : {}),
-      ...(outboundDate ? { outbound_date: outboundDate } : {}),
-      ...(returnDate && parsedTripType === 1 ? { return_date: returnDate } : {}),
-      type: parsedTripType,
-      adults: Number(adults) || 1,
-      travel_class: Number(travelClass) || 1,
-      currency: "USD",
-      hl: "en",
-    };
-
-    let payload = { ...basePayload };
-    let phase = "initial";
-
-    if (bookingToken) {
-      payload = { ...basePayload, booking_token: bookingToken };
-      phase = "booking";
-    } else if (departureToken) {
-      payload = { ...basePayload, departure_token: departureToken };
-      phase = "returns";
-    } else if (!departureId || !arrivalId || !outboundDate) {
+    const serpApiKey = process.env.SERPAPI_KEY;
+    if (!serpApiKey) {
       return res.status(200).json({
         flights: [],
         bookingOptions: [],
         phase: "none",
-        error: "Departure airport, arrival airport, and departure date are required.",
+        error: "SERPAPI_KEY is not configured on the server.",
         jwtToken: getRefreshedToken(refreshedToken),
       });
     }
 
-    const response = await getJson(payload);
-    const flights = response?.best_flights || response?.other_flights || [];
-    const bookingOptions =
-      response?.booking_options || response?.book_with || response?.booking_flights || [];
+    try {
+      const { getJson } = require("serpapi");
+      const parsedTripType = Number(tripType) || 1;
+      const basePayload = {
+        engine: "google_flights",
+        api_key: serpApiKey,
+        ...(departureId ? { departure_id: String(departureId).toUpperCase().trim() } : {}),
+        ...(arrivalId ? { arrival_id: String(arrivalId).toUpperCase().trim() } : {}),
+        ...(outboundDate ? { outbound_date: outboundDate } : {}),
+        ...(returnDate && parsedTripType === 1 ? { return_date: returnDate } : {}),
+        type: parsedTripType,
+        adults: Number(adults) || 1,
+        travel_class: Number(travelClass) || 1,
+        currency: "USD",
+        hl: "en",
+      };
 
-    return res.status(200).json({
-      flights,
-      bookingOptions,
-      phase,
-      error: "",
-      jwtToken: getRefreshedToken(refreshedToken),
-    });
-  } catch (e) {
-    return res.status(200).json({
-      flights: [],
-      bookingOptions: [],
-      phase: "none",
-      error: e.toString(),
-      jwtToken: getRefreshedToken(refreshedToken),
-    });
-  }
-});
+      let payload = { ...basePayload };
+      let phase = "initial";
+
+      if (bookingToken) {
+        payload = { ...basePayload, booking_token: bookingToken };
+        phase = "booking";
+      } else if (departureToken) {
+        payload = { ...basePayload, departure_token: departureToken };
+        phase = "returns";
+      } else if (!departureId || !arrivalId || !outboundDate) {
+        return res.status(200).json({
+          flights: [],
+          bookingOptions: [],
+          phase: "none",
+          error: "Departure airport, arrival airport, and departure date are required.",
+          jwtToken: getRefreshedToken(refreshedToken),
+        });
+      }
+
+      const response = await getJson(payload);
+      const flights = response?.best_flights || response?.other_flights || [];
+      const bookingOptions =
+        response?.booking_options || response?.book_with || response?.booking_flights || [];
+
+      return res.status(200).json({
+        flights,
+        bookingOptions,
+        phase,
+        error: "",
+        jwtToken: getRefreshedToken(refreshedToken),
+      });
+    } catch (e) {
+      return res.status(200).json({
+        flights: [],
+        bookingOptions: [],
+        phase: "none",
+        error: e.toString(),
+        jwtToken: getRefreshedToken(refreshedToken),
+      });
+    }
+  });
 
   app.post("/api/createTrip", async (req, res, next) => {
-    // incoming: userId, location, jwtToken
-    // outgoing: tripId, error, jwtToken
     var token = require("./createJWT.js");
     var error = "";
 
@@ -722,8 +706,6 @@ app.post("/api/searchFlights", async (req, res, next) => {
   });
 
   app.post("/api/addToTrip", async (req, res, next) => {
-    // incoming: userId, tripId, item, jwtToken
-    // outgoing: error, jwtToken
     var token = require("./createJWT.js");
     var error = "";
 
@@ -772,8 +754,6 @@ app.post("/api/searchFlights", async (req, res, next) => {
   });
 
   app.post("/api/getTrips", async (req, res, next) => {
-    // incoming: userId, jwtToken
-    // outgoing: trips[], error, jwtToken
     var token = require("./createJWT.js");
     var error = "";
 
@@ -812,8 +792,6 @@ app.post("/api/searchFlights", async (req, res, next) => {
   });
 
   app.post("/api/removeFromTrip", async (req, res, next) => {
-    // incoming: userId, tripId, itemIndex, jwtToken
-    // outgoing: error, jwtToken
     var token = require("./createJWT.js");
     var error = "";
 
@@ -869,8 +847,6 @@ app.post("/api/searchFlights", async (req, res, next) => {
   });
 
   app.post("/api/deleteTrip", async (req, res, next) => {
-    // incoming: userId, tripId, jwtToken
-    // outgoing: error, jwtToken
     var token = require("./createJWT.js");
     var error = "";
 
@@ -914,4 +890,25 @@ app.post("/api/searchFlights", async (req, res, next) => {
       res.status(200).json(ret);
     }
   });
+
+  app.get("/api/verifyEmail", async (req, res, next) => {
+  const { token } = req.query;
+
+  try {
+    const jwt = require("jsonwebtoken");
+    
+    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+
+    const db = client.db("COP4331Cards");
+    const result = await db.collection("Users").updateOne(
+      { UserId: decoded.userId },
+      { $set: { IsVerified: true } }
+    );
+
+    res.redirect(`${process.env.CLIENT_URL}/verify-email?success=true`);
+  } catch (e) {
+    res.redirect(`${process.env.CLIENT_URL}/verify-email?success=false`);
+  }
+});
+
 };
