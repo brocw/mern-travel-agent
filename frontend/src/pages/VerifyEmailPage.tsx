@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { buildPath } from "./Path";
 
 function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
@@ -23,7 +24,7 @@ function VerifyEmailPage() {
 
     if (token) {
       // Redirect directly to backend which will redirect back here with success param
-      window.location.href = `http://localhost:5000/api/verifyEmail?token=${token}`;
+      window.location.href = buildPath("api/verifyEmail") + `?token=${token}`;
     }
   }, [searchParams]);
 
