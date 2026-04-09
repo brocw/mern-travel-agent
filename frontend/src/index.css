@@ -944,6 +944,9 @@ input, select, textarea { font-family: inherit; }
   border: 1px solid #EBEBEB;
   border-radius: 0.75rem;
   background: #ffffff;
+  background: var(--tt-ice);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border-radius: 1.25rem;
 }
 
 #searchContainer form {
@@ -970,6 +973,24 @@ input, select, textarea { font-family: inherit; }
   box-shadow: 0 0 0 3px rgba(58,79,138,0.1);
 }
 
+#searchContainer select,
+#searchContainer input[type="date"] {
+  padding: 10px;
+  border: 1.5px solid #EBEBEB;
+  border-radius: 0.625rem;
+  background: white;
+  color: var(--tt-text);
+  font-size: 1em;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#searchContainer select:focus,
+#searchContainer input[type="date"]:focus {
+  border-color: var(--tt-navy);
+  box-shadow: 0 0 0 3px rgba(58,79,138,0.1);
+}
+
 #searchMessage { font-weight: 500; }
 #mainContent   { margin-top: 20px; }
 
@@ -984,6 +1005,8 @@ input, select, textarea { font-family: inherit; }
   border: 1px solid #EBEBEB;
   border-radius: 0.75rem;
   overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  border-radius: 1.25rem;
 }
 
 #placesSection, #eventsSection {
@@ -991,6 +1014,8 @@ input, select, textarea { font-family: inherit; }
   border-radius: 0.75rem;
   padding: 15px;
   background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  border-radius: 1.25rem;
 }
 
 #eventsSection { margin-bottom: 20px; }
@@ -1158,6 +1183,14 @@ input, select, textarea { font-family: inherit; }
 }
 
 #flightTicketsContainer h3 { color: var(--tt-navy); margin-bottom: 0.5rem; }
+
+.tt-search -page {
+  min-height: 100vh;
+  background: #ffffff;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
 
 /* Responsive */
 @media (max-width: 768px) {

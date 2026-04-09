@@ -226,7 +226,7 @@ const SearchPage = () => {
   };
 
   return (
-    <div>
+    <div className="tt-search-page">
       <PageTitle />
       <LoggedInName />
 
