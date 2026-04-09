@@ -22,12 +22,7 @@ function VerifyEmailPage() {
     }
 
     if (token) {
-      // Redirect directly to backend which will redirect back here with success param
-      if (process.env.NODE_ENV != 'development') {
-        window.location.href = `http://cop-4331-22.com/verifyEmail?token=${token}`;
-      } else {
-        window.location.href = `http://localhost:5000/verifyEmail?token=${token}`;
-      }
+      window.location.href = `/verify-email?token=${token}`;
     }
   }, [searchParams]);
 
