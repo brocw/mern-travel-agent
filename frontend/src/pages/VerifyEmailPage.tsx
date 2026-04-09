@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { buildPath } from "./Path";
+import { buildPath } from "../components/Path.ts";
 
 function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
