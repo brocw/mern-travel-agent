@@ -78,6 +78,9 @@ jobs:
             TICKETMASTER_CONSUMER_KEY=${{ secrets.TICKETMASTER_CONSUMER_KEY }}
             EOF
             SERPAPI_KEY=${{ secrets.SERPAPI_KEY }}
+            SENDGRID_API_KEY=${{ secrets.SENDGRID_API_KEY }}
+            SENDGRID_FROM_EMAIL=${{ secrets.SENDGRID_FROM_EMAIL }}
+            CLIENT_URL=${{ secrets.SERVER_HOST }}
 
             # Install dependencies
             npm ci --production
