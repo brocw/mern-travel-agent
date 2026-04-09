@@ -36,8 +36,8 @@ exports.setApp = function (app, client) {
 
     try {
       // Find the max userId in the DB
-      const userCount = await db.collection("Users").find().sort({UserId:-1}).limit(1);
-      const newUserId = userCount + 1;
+      const topUser = await db.collection("Users").findOne({}, { sort: { UserId: -1 } });
+      const newUserId = topUser.UserId + 1;
 
       const newUser = {
         UserId: newUserId,
