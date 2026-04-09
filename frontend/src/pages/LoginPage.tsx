@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Login from "../components/Login";
-import triptasticLogo from "../assets/triptastic-logo.png";
+// import triptasticLogo from "../assets/triptastic-logo.png";
 import heroBg from "../assets/hero-bg.png";
 
 const SANTORINI =

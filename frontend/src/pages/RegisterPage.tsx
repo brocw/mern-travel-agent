@@ -1,6 +1,6 @@
 import Register from "../components/Register";
 import heroBg from "../assets/hero-bg.png";
-import triptasticLogo from "../assets/triptastic-logo.png";
+// import triptasticLogo from "../assets/triptastic-logo.png";
 
 const RegisterPage = () => {
   return (
