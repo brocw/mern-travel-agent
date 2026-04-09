@@ -1,5 +1,6 @@
 require("express");
 require("mongodb");
+const bcrypt = require("bcrypt");
 
 exports.setApp = function (app, client) {
 
@@ -11,7 +12,6 @@ exports.setApp = function (app, client) {
   
   app.post("/api/register", async (req, res, next) => {
     var error = "";
-    console.log(req.body);
 
     const { firstName, lastName, login, email, password } = req.body;
     const db = client.db("COP4331Cards");
@@ -39,13 +39,17 @@ exports.setApp = function (app, client) {
       const topUser = await db.collection("Users").findOne({}, { sort: { UserId: -1 } });
       const newUserId = topUser.UserId + 1;
 
+      const saltRounds = 10;
+      const salt = await bcrypt.genSalt(saltRounds);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
       const newUser = {
         UserId: newUserId,
         FirstName: firstName,
         LastName: lastName,
         Login: login,
         Email: email,
-        Password: password,
+        Password: hashedPassword,
         IsVerified: false,
       };
 
@@ -65,25 +69,33 @@ exports.setApp = function (app, client) {
 
   app.post("/api/login", async (req, res, next) => {
     var error = "";
-    console.log(req.body);
 
     const { login, password } = req.body;
     const db = client.db("COP4331Cards");
 
     const results = await db
       .collection("Users")
-      .find({ Login: login, Password: password })
+      .find({ Login: login })
       .toArray();
 
     var id = -1;
     var fn = "";
     var ln = "";
+
+    var passwordMatch;
     var ret;
 
     if (results.length > 0) {
       if (!results[0].IsVerified) {
         ret = { error: "Please verify your email before logging in." };
         res.status(200).json(ret);
+        return;
+      }
+
+      passwordMatch = await bcrypt.compare(password, results[0].Password);
+
+      if (!passwordMatch) {
+        res.status(200).json({error: "Password incorrect."});
         return;
       }
 
@@ -98,7 +110,7 @@ exports.setApp = function (app, client) {
         ret = { error: e.message };
       }
     } else {
-      ret = { error: "Login/Password incorrect." };
+      ret = { error: "Login incorrect." };
     }
 
     res.status(200).json(ret);
