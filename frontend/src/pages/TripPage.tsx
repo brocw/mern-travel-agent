@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react';
-import PageTitle from '../components/PageTitle';
-import LoggedInName from '../components/LoggedInName';
 import { buildPath } from '../components/Path';
 import { getAccessToken, storeToken } from '../tokenStorage';
 
@@ -20,17 +18,20 @@ const TripPage = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState<'success' | 'error'>('success');
+  const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
 
-  // Get user data - token will be retrieved fresh before each API call
   const userData = localStorage.getItem('user_data');
   const user = userData ? JSON.parse(userData) : null;
-
-  // Always send the raw JWT string, not the serialized token object.
   const getToken = () => getAccessToken();
 
-  useEffect(() => {
-    loadTrips();
-  }, []);
+  useEffect(() => { loadTrips(); }, []);
+
+  const showMessage = (msg: string, type: 'success' | 'error') => {
+    setMessage(msg);
+    setMessageType(type);
+    setTimeout(() => setMessage(''), 3000);
+  };
 
   const loadTrips = async () => {
     setLoading(true);
@@ -38,24 +39,17 @@ const TripPage = () => {
       const response = await fetch(buildPath('api/getTrips'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user?.id,
-          jwtToken: getToken(),
-        }),
+        body: JSON.stringify({ userId: user?.id, jwtToken: getToken() }),
       });
-
       const data = await response.json();
-
       if (data.error) {
-        setMessage(data.error);
+        showMessage(data.error, 'error');
       } else {
         setTrips(data.trips);
-        if (data.jwtToken) {
-          storeToken({ accessToken: data.jwtToken });
-        }
+        if (data.jwtToken) storeToken({ accessToken: data.jwtToken });
       }
     } catch (error: any) {
-      setMessage(error.message || 'Error loading trips');
+      showMessage(error.message || 'Error loading trips', 'error');
     } finally {
       setLoading(false);
     }
@@ -63,32 +57,22 @@ const TripPage = () => {
 
   const handleDeleteTrip = async (tripId: string) => {
     if (!window.confirm('Are you sure you want to delete this trip?')) return;
-
     try {
       const response = await fetch(buildPath('api/deleteTrip'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user?.id,
-          tripId: tripId,
-          jwtToken: getToken(),
-        }),
+        body: JSON.stringify({ userId: user?.id, tripId, jwtToken: getToken() }),
       });
-
       const data = await response.json();
-
       if (data.error) {
-        setMessage(data.error);
+        showMessage(data.error, 'error');
       } else {
-        setTrips(trips.filter((trip) => trip._id !== tripId));
-        setMessage('Trip deleted successfully');
-        setTimeout(() => setMessage(''), 3000);
-        if (data.jwtToken) {
-          storeToken({ accessToken: data.jwtToken });
-        }
+        setTrips(trips.filter((t) => t._id !== tripId));
+        showMessage('Trip deleted', 'success');
+        if (data.jwtToken) storeToken({ accessToken: data.jwtToken });
       }
     } catch (error: any) {
-      setMessage(error.message || 'Error deleting trip');
+      showMessage(error.message || 'Error deleting trip', 'error');
     }
   };
 
@@ -97,110 +81,174 @@ const TripPage = () => {
       const response = await fetch(buildPath('api/removeFromTrip'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user?.id,
-          tripId: tripId,
-          itemIndex: itemIndex,
-          jwtToken: getToken(),
-        }),
+        body: JSON.stringify({ userId: user?.id, tripId, itemIndex, jwtToken: getToken() }),
       });
-
       const data = await response.json();
-
       if (data.error) {
-        setMessage(data.error);
+        showMessage(data.error, 'error');
       } else {
-        // Update local state
-        const updatedTrips = trips.map((trip) => {
-          if (trip._id === tripId) {
-            return {
-              ...trip,
-              Items: trip.Items.filter((_, i) => i !== itemIndex),
-            };
-          }
-          return trip;
-        });
-        setTrips(updatedTrips);
-        setMessage('Item removed from trip');
-        setTimeout(() => setMessage(''), 3000);
-        if (data.jwtToken) {
-          storeToken({ accessToken: data.jwtToken });
-        }
+        setTrips(trips.map((trip) =>
+          trip._id === tripId
+            ? { ...trip, Items: trip.Items.filter((_, i) => i !== itemIndex) }
+            : trip
+        ));
+        showMessage('Item removed', 'success');
+        if (data.jwtToken) storeToken({ accessToken: data.jwtToken });
       }
     } catch (error: any) {
-      setMessage(error.message || 'Error removing item');
+      showMessage(error.message || 'Error removing item', 'error');
     }
   };
 
+  const doLogout = () => {
+    localStorage.removeItem('user_data');
+    localStorage.removeItem('token_data');
+    window.location.href = '/';
+  };
+
+  const typeIcon = (type: string) => type === 'place' ? '📍' : '🎟️';
+  const typeLabel = (type: string) => type === 'place' ? 'Place' : 'Event';
+
   return (
-    <div>
-      <PageTitle />
-      <LoggedInName />
+    <div className="tt-trips-page">
 
-      <div id="tripsContainer">
-        <h2>My Trips</h2>
+      {/* ── Navbar ── */}
+      <nav className="tt-trips-nav">
+        <div className="tt-trips-nav-inner">
+          <a href="/" className="tt-trips-nav-brand">
+            <span style={{ color: 'var(--tt-navy)', fontWeight: 900, fontSize: '1.4rem', letterSpacing: '-0.03em' }}>
+              Trip<span style={{ color: 'var(--tt-steel)' }}>tastic!</span>
+            </span>
+          </a>
+          <div className="tt-trips-nav-links">
+            <a href="/search" className="tt-trips-nav-link">🔍 Explore</a>
+            <a href="/trips" className="tt-trips-nav-link active">🗺️ My Trips</a>
+          </div>
+          <div className="tt-trips-nav-right">
+            <span className="tt-trips-nav-user">
+              👤 {user?.firstName} {user?.lastName}
+            </span>
+            <button className="tt-trips-nav-logout" onClick={doLogout}>
+              Log Out
+            </button>
+          </div>
+        </div>
+      </nav>
 
+      {/* ── Page content ── */}
+      <div className="tt-trips-content">
+
+        {/* Header */}
+        <div className="tt-trips-header">
+          <div>
+            <h1 className="tt-trips-title">My Trips</h1>
+            <p className="tt-trips-subtitle">
+              {loading ? 'Loading your adventures...' : `${trips.length} trip${trips.length !== 1 ? 's' : ''} planned`}
+            </p>
+          </div>
+          <a href="/search" className="tt-trips-new-btn">
+            + Plan New Trip
+          </a>
+        </div>
+
+        {/* Toast message */}
         {message && (
-          <p id="tripMessage" style={{ color: message.includes('Error') ? '#d32f2f' : '#333', marginBottom: '15px' }}>
-            {message}
-          </p>
+          <div className={`tt-trips-toast ${messageType === 'error' ? 'tt-trips-toast-error' : 'tt-trips-toast-success'}`}>
+            {messageType === 'success' ? '✓' : '⚠'} {message}
+          </div>
         )}
 
+        {/* Loading */}
         {loading ? (
-          <p>Loading trips...</p>
+          <div className="tt-trips-loading">
+            <div className="tt-trips-spinner" />
+            <p>Loading your trips...</p>
+          </div>
         ) : trips.length === 0 ? (
-          <p style={{ color: '#666' }}>No trips created yet. Search for a location and create a trip to get started!</p>
+          /* Empty state */
+          <div className="tt-trips-empty">
+            <div className="tt-trips-empty-icon">🗺️</div>
+            <h2>No trips yet</h2>
+            <p>Search for a destination and start building your itinerary.</p>
+            <a href="/search" className="tt-trips-new-btn">
+              Plan Your First Trip
+            </a>
+          </div>
         ) : (
-          <div id="tripsList">
+          /* Trip cards */
+          <div className="tt-trips-grid">
             {trips.map((trip) => (
-              <div key={trip._id} className="trip-card">
-                <h3>{trip.Location}</h3>
-                <p><small>Created: {new Date(trip.CreatedAt).toLocaleDateString()}</small></p>
+              <div key={trip._id} className="tt-trip-card">
 
-                <h4>Itinerary ({trip.Items.length} items)</h4>
-                {trip.Items.length === 0 ? (
-                  <p style={{ color: '#999' }}>No items in this trip</p>
-                ) : (
-                  <ul style={{ listStyle: 'none', padding: 0 }}>
-                    {trip.Items.map((item, index) => (
-                      <li key={index} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid #eee' }}>
-                        <div>
-                          <strong>[{item.type.toUpperCase()}]</strong> {item.data.name || item.data}
-                          {item.data.address && (
-                            <p style={{ fontSize: '0.9em', color: '#666', margin: '5px 0 0 0' }}>
-                              📍 {item.data.address}
-                            </p>
-                          )}
-                          {item.data.date && (
-                            <p style={{ fontSize: '0.9em', color: '#666', margin: '5px 0 0 0' }}>
-                              📅 {item.data.date}
-                            </p>
-                          )}
-                          {item.data.venue && (
-                            <p style={{ fontSize: '0.9em', color: '#666', margin: '5px 0 0 0' }}>
-                              🎤 {item.data.venue}
-                            </p>
-                          )}
+                {/* Card header */}
+                <div className="tt-trip-card-header">
+                  <div className="tt-trip-card-icon">✈️</div>
+                  <div className="tt-trip-card-info">
+                    <h3 className="tt-trip-card-title">{trip.Location}</h3>
+                    <p className="tt-trip-card-date">
+                      Created {new Date(trip.CreatedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <span className="tt-trip-card-badge">
+                    {trip.Items.length} item{trip.Items.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* Divider */}
+                <div className="tt-trip-card-divider" />
+
+                {/* Items toggle */}
+                <button
+                  className="tt-trip-card-toggle"
+                  onClick={() => setExpandedTrip(expandedTrip === trip._id ? null : trip._id)}
+                >
+                  <span>{expandedTrip === trip._id ? 'Hide' : 'Show'} itinerary</span>
+                  <span className="tt-trip-toggle-arrow">{expandedTrip === trip._id ? '▲' : '▼'}</span>
+                </button>
+
+                {/* Expanded items */}
+                {expandedTrip === trip._id && (
+                  <div className="tt-trip-items">
+                    {trip.Items.length === 0 ? (
+                      <p className="tt-trip-items-empty">No items added yet.</p>
+                    ) : (
+                      trip.Items.map((item, index) => (
+                        <div key={index} className="tt-trip-item">
+                          <div className="tt-trip-item-icon">{typeIcon(item.type)}</div>
+                          <div className="tt-trip-item-body">
+                            <div className="tt-trip-item-type">{typeLabel(item.type)}</div>
+                            <div className="tt-trip-item-name">{item.data.name || item.data}</div>
+                            {item.data.address && (
+                              <div className="tt-trip-item-detail">📍 {item.data.address}</div>
+                            )}
+                            {item.data.date && (
+                              <div className="tt-trip-item-detail">📅 {item.data.date}</div>
+                            )}
+                            {item.data.venue && (
+                              <div className="tt-trip-item-detail">🎤 {item.data.venue}</div>
+                            )}
+                          </div>
+                          <button
+                            className="tt-trip-item-remove"
+                            onClick={() => handleRemoveItem(trip._id, index)}
+                            title="Remove item"
+                          >
+                            ✕
+                          </button>
                         </div>
-                        <button
-                          className="buttons remove-btn"
-                          onClick={() => handleRemoveItem(trip._id, index)}
-                          style={{ marginTop: '8px' }}
-                        >
-                          Remove
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                      ))
+                    )}
+                  </div>
                 )}
 
+                {/* Delete button */}
                 <button
-                  className="buttons delete-btn"
+                  className="tt-trip-card-delete"
                   onClick={() => handleDeleteTrip(trip._id)}
-                  style={{ marginTop: '15px', width: '100%', background: '#d32f2f', color: 'white' }}
                 >
-                  Delete Trip
+                  🗑 Delete Trip
                 </button>
+
               </div>
             ))}
           </div>
