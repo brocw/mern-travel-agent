@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { buildPath } from "../components/Path";
 
 function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
@@ -22,7 +23,20 @@ function VerifyEmailPage() {
     }
 
     if (token) {
-      window.location.href = `/verify-email?token=${token}`;
+      fetch(buildPath(`api/verifyEmail?token=${token}`), { method: "POST" })
+        .then((response) => {
+          const url = new URL(response.url);
+          const result = url.searchParams.get("success");
+          if (result === "true") {
+            setSuccess(true);
+            setMessage("Email verified successfully! You can now log in.");
+          } else {
+            setMessage("Verification failed. The link may have expired. Please register again.");
+          }
+        })
+        .catch(() => {
+          setMessage("An error occurred during verification. Please try again.");
+        });
     }
   }, [searchParams]);
 
