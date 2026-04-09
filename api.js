@@ -9,41 +9,6 @@ exports.setApp = function (app, client) {
     return refreshResult?.accessToken || "";
   };
   
-  app.post("/api/addCard", async (req, res, next) => {
-    var token = require("./createJWT.js");
-    const { userId, card, jwtToken } = req.body;
-
-    try {
-      if (token.isExpired(jwtToken)) {
-        var r = { error: "The JWT is not longer valid.", jwtToken: "" };
-        res.status(200).json(r);
-        return;
-      }
-    } catch (e) {
-      console.log(e.message);
-    }
-
-    const newCard = { Card: card, UserId: userId };
-    var error = "";
-
-    try {
-      const db = client.db("COP4331Cards");
-      const result = db.collection("Cards").insertOne(newCard);
-    } catch (e) {
-      error = e.toString();
-    }
-
-    var refreshedToken = null;
-    try {
-      refreshedToken = token.refresh(jwtToken);
-    } catch (e) {
-      console.log(e.message);
-    }
-
-    var ret = { error: error, jwtToken: getRefreshedToken(refreshedToken) };
-    res.status(200).json(ret);
-  });
-
   app.post("/api/register", async (req, res, next) => {
     var error = "";
     console.log(req.body);
@@ -70,10 +35,10 @@ exports.setApp = function (app, client) {
     }
 
     try {
-      const userCount = await db.collection("Users").countDocuments();
+      // Find the max userId in the DB
+      const userCount = await db.collection("Users").find().sort({UserId:-1}).limit(1);
       const newUserId = userCount + 1;
 
-      // ✅ CHANGE 1 - Added IsVerified: false and sendVerificationEmail
       const newUser = {
         UserId: newUserId,
         FirstName: firstName,
@@ -84,10 +49,10 @@ exports.setApp = function (app, client) {
         IsVerified: false,
       };
 
-      await db.collection("Users").insertOne(newUser);
-
       const { sendVerificationEmail } = require("./sendVerificationEmail.js");
       await sendVerificationEmail(email, newUserId);
+
+      await db.collection("Users").insertOne(newUser);
 
       res.status(200).json({
         error: "",
@@ -116,7 +81,6 @@ exports.setApp = function (app, client) {
     var ret;
 
     if (results.length > 0) {
-      // ✅ CHANGE 2 - Block unverified users
       if (!results[0].IsVerified) {
         ret = { error: "Please verify your email before logging in." };
         res.status(200).json(ret);
@@ -137,45 +101,6 @@ exports.setApp = function (app, client) {
       ret = { error: "Login/Password incorrect." };
     }
 
-    res.status(200).json(ret);
-  });
-
-  app.post("/api/searchCards", async (req, res, next) => {
-    var token = require("./createJWT.js");
-    var error = "";
-
-    const { userId, search, jwtToken } = req.body;
-    try {
-      if (token.isExpired(jwtToken)) {
-        var r = { error: "The JWT is no longer valid.", jwtToken: "" };
-        res.status(200).json(r);
-        return;
-      }
-    } catch (e) {
-      console.log(e.message);
-    }
-
-    var _search = search.trim();
-
-    const db = client.db("COP4331Cards");
-    const results = await db
-      .collection("Cards")
-      .find({ Card: { $regex: _search + ".*", $options: "i" } })
-      .toArray();
-
-    var _ret = [];
-    for (var i = 0; i < results.length; i++) {
-      _ret.push(results[i].Card);
-    }
-
-    var refreshedToken = null;
-    try {
-      refreshedToken = token.refresh(jwtToken);
-    } catch (e) {
-      console.log(e.message);
-    }
-
-    var ret = { results: _ret, error: error, jwtToken: getRefreshedToken(refreshedToken) };
     res.status(200).json(ret);
   });
 
@@ -891,7 +816,7 @@ exports.setApp = function (app, client) {
     }
   });
 
-  app.get("/api/verifyEmail", async (req, res, next) => {
+  app.post("/api/verifyEmail", async (req, res, next) => {
   const { token } = req.query;
 
   try {

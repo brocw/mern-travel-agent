@@ -3,7 +3,6 @@ import './App.css';
 
 import LoginPage from './pages/LoginPage.tsx';
 import RegisterPage from './pages/RegisterPage.tsx';
-import CardPage from './pages/CardPage.tsx';
 import SearchPage from './pages/SearchPage.tsx';
 import TripPage from './pages/TripPage.tsx';
 import VerifyEmailPage from './pages/VerifyEmailPage.tsx';
@@ -14,7 +13,6 @@ function App() {
       <Routes>
         <Route path="/" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        <Route path="/cards" element={<CardPage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/trips" element={<TripPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
