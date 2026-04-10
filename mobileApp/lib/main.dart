@@ -27,6 +27,12 @@ class _MyAppState extends State<MyApp> {
   bool _isLoggedIn = false;
   String? _registrationNotice;
 
+  // Live explore state backed by the searchLocation/getPlaces API flow.
+  bool _exploreLoading = false;
+  String? _exploreError;
+  String? _exploreLocationLabel;
+  List<ExplorePlaceResult> _explorePlaces = <ExplorePlaceResult>[];
+
   // Navigation and shared trip state for the entire app.
   int _selectedTab = 0;
   int _activeTripIndex = 0;
@@ -82,63 +88,6 @@ class _MyAppState extends State<MyApp> {
         'Hotel confirmation: AD-88321',
         'Catamaran sunset cruise: CS-32109',
       ],
-    ),
-  ];
-
-  final List<DestinationItem> _destinations = <DestinationItem>[
-    DestinationItem(
-      id: 'dest-1',
-      name: 'Tropical Paradise Beach',
-      location: 'Thailand',
-      image:
-          'https://images.unsplash.com/photo-1653959747793-c7c3775665f0?auto=format&fit=crop&w=1200&q=80',
-      description:
-          'Crystal clear waters and white sand beaches for a complete reset.',
-      tags: const <String>['beaches', 'snorkeling'],
-      pricePerDay: 85,
-    ),
-    DestinationItem(
-      id: 'dest-2',
-      name: 'Tokyo Night Adventure',
-      location: 'Japan',
-      image:
-          'https://images.unsplash.com/photo-1724063781332-0221499bd113?auto=format&fit=crop&w=1200&q=80',
-      description:
-          'Neon skyline, ramen alleys, rooftop bars, and immersive city culture.',
-      tags: const <String>['nightlife', 'museums', 'food'],
-      pricePerDay: 120,
-    ),
-    DestinationItem(
-      id: 'dest-3',
-      name: 'Bali Rice Terraces',
-      location: 'Indonesia',
-      image:
-          'https://images.unsplash.com/photo-1656247203824-3d6f99461ba4?auto=format&fit=crop&w=1200&q=80',
-      description:
-          'Temple trails, jungle mornings, and unforgettable food tours.',
-      tags: const <String>['hiking', 'food'],
-      pricePerDay: 65,
-    ),
-    DestinationItem(
-      id: 'dest-4',
-      name: 'Coral Reef Snorkeling',
-      location: 'Maldives',
-      image:
-          'https://images.unsplash.com/photo-1638905218816-01f67bc67117?auto=format&fit=crop&w=1200&q=80',
-      description:
-          'Snorkel among colorful reefs in warm, clear, ocean-blue water.',
-      tags: const <String>['beaches', 'snorkeling'],
-      pricePerDay: 180,
-    ),
-    DestinationItem(
-      id: 'dest-5',
-      name: 'Alpine Hiking Trails',
-      location: 'Switzerland',
-      image:
-          'https://images.unsplash.com/photo-1673505413397-0cd0dc4f5854?auto=format&fit=crop&w=1200&q=80',
-      description: 'Summit routes and panoramic views across the Alps.',
-      tags: const <String>['hiking'],
-      pricePerDay: 200,
     ),
   ];
 
@@ -319,11 +268,77 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  void _toggleAddDestination(DestinationItem destination) {
+  Future<void> _searchExplorePlaces() async {
+    final String searchTerm = _exploreQuery.trim();
+    if (searchTerm.isEmpty) {
+      setState(() {
+        _exploreError = 'Enter a city or destination to search.';
+        _explorePlaces = <ExplorePlaceResult>[];
+        _exploreLocationLabel = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _exploreLoading = true;
+      _exploreError = null;
+      _exploreLocationLabel = null;
+    });
+
+    try {
+      final Map<String, dynamic> location = await searchLocation(searchTerm);
+      final double lat = (location['lat'] as num).toDouble();
+      final double lng = (location['lng'] as num).toDouble();
+      final String resolvedLocation = location['name']?.toString() ?? searchTerm;
+      final Map<String, dynamic> placesResponse = await getPlaces(lat, lng);
+      final List<dynamic> rawPlaces = (placesResponse['places'] as List<dynamic>?) ?? <dynamic>[];
+
+      final List<ExplorePlaceResult> places = rawPlaces.map<ExplorePlaceResult>((dynamic raw) {
+        final Map<String, dynamic> placeMap = raw as Map<String, dynamic>;
+        return ExplorePlaceResult(
+          id: placeMap['placeId']?.toString() ?? placeMap['name']?.toString() ?? '',
+          name: placeMap['name']?.toString() ?? 'Unknown place',
+          location: placeMap['address']?.toString() ?? resolvedLocation,
+          image: placeMap['image']?.toString() ?? '',
+          rating: (placeMap['rating'] as num?)?.toDouble(),
+          type: placeMap['type']?.toString() ?? 'place',
+        );
+      }).toList();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _exploreLoading = false;
+        _exploreLocationLabel = resolvedLocation;
+        _explorePlaces = places;
+        _exploreError = places.isEmpty
+            ? (placesResponse['error']?.toString().isNotEmpty == true
+                ? placesResponse['error'].toString()
+                : 'No places found for this location.')
+            : null;
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _exploreLoading = false;
+        _exploreError = e.toString();
+        _explorePlaces = <ExplorePlaceResult>[];
+        _exploreLocationLabel = null;
+      });
+    }
+  }
+
+  void _toggleAddDestination(ExplorePlaceResult destination) {
     // Adding a destination also seeds the current itinerary so the planner reflects the selection.
     setState(() {
       if (_addedDestinationIds.contains(destination.id)) {
         _addedDestinationIds.remove(destination.id);
+        _itinerary[1].activities.removeWhere((PlannedActivity activity) => activity.id == 'added-${destination.id}');
         return;
       }
       _addedDestinationIds.add(destination.id);
@@ -333,7 +348,7 @@ class _MyAppState extends State<MyApp> {
           title: destination.name,
           time: '13:30',
           category: ActivityCategory.activity,
-          cost: destination.pricePerDay,
+          cost: 0,
         ),
       );
     });
@@ -585,6 +600,10 @@ class _MyAppState extends State<MyApp> {
                           _exploreQuery = value;
                         });
                       },
+                      onSearch: _searchExplorePlaces,
+                      isLoading: _exploreLoading,
+                      errorMessage: _exploreError,
+                      locationLabel: _exploreLocationLabel,
                       selectedFilters: _selectedFilters,
                       onToggleFilter: _toggleFilter,
                       onClearFilters: () {
@@ -592,7 +611,7 @@ class _MyAppState extends State<MyApp> {
                           _selectedFilters.clear();
                         });
                       },
-                      destinations: _destinations,
+                      places: _explorePlaces,
                       addedDestinationIds: _addedDestinationIds,
                       onToggleAddDestination: _toggleAddDestination,
                     ),
@@ -1389,34 +1408,41 @@ class ExploreScreen extends StatelessWidget {
     super.key,
     required this.query,
     required this.onQueryChanged,
+    required this.onSearch,
+    required this.isLoading,
+    required this.errorMessage,
+    required this.locationLabel,
     required this.selectedFilters,
     required this.onToggleFilter,
     required this.onClearFilters,
-    required this.destinations,
+    required this.places,
     required this.addedDestinationIds,
     required this.onToggleAddDestination,
   });
 
   final String query;
   final ValueChanged<String> onQueryChanged;
+  final VoidCallback onSearch;
+  final bool isLoading;
+  final String? errorMessage;
+  final String? locationLabel;
   final Set<String> selectedFilters;
   final ValueChanged<String> onToggleFilter;
   final VoidCallback onClearFilters;
-  final List<DestinationItem> destinations;
+  final List<ExplorePlaceResult> places;
   final Set<String> addedDestinationIds;
-  final ValueChanged<DestinationItem> onToggleAddDestination;
+  final ValueChanged<ExplorePlaceResult> onToggleAddDestination;
 
   @override
   Widget build(BuildContext context) {
-    // Search and filters reduce the destination catalog into a mobile-friendly result list.
-    final List<DestinationItem> filtered = destinations.where((DestinationItem destination) {
+    final List<ExplorePlaceResult> filtered = places.where((ExplorePlaceResult place) {
       final String q = query.trim().toLowerCase();
       final bool matchesQuery = q.isEmpty ||
-          destination.name.toLowerCase().contains(q) ||
-          destination.location.toLowerCase().contains(q) ||
-          destination.tags.any((String t) => t.contains(q));
+          place.name.toLowerCase().contains(q) ||
+          place.location.toLowerCase().contains(q) ||
+          place.type.toLowerCase().contains(q);
       final bool matchesFilter = selectedFilters.isEmpty ||
-          selectedFilters.any((String filter) => destination.tags.contains(filter));
+          selectedFilters.any((String filter) => _matchesFilter(place, filter));
       return matchesQuery && matchesFilter;
     }).toList();
 
@@ -1428,21 +1454,42 @@ class ExploreScreen extends StatelessWidget {
           style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFF1A2B3C)),
         ),
         const SizedBox(height: 4),
-        const Text('Find activities and destinations, then add them to your trip.'),
+        const Text('Search a city to load live nearby places from the API.'),
         const SizedBox(height: 12),
         TextField(
           onChanged: onQueryChanged,
+          onSubmitted: (_) => onSearch(),
           controller: TextEditingController(text: query)
             ..selection = TextSelection.collapsed(offset: query.length),
           decoration: InputDecoration(
-            hintText: 'Search beaches, hiking, nightlife, museums, city...',
+            hintText: 'Search a city, country, or region...',
             prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: IconButton(
+              onPressed: onSearch,
+              icon: const Icon(Icons.travel_explore_rounded),
+              tooltip: 'Search location',
+            ),
             filled: true,
             fillColor: Colors.white,
             border: OutlineInputBorder(
               borderSide: BorderSide.none,
               borderRadius: BorderRadius.circular(16),
             ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: isLoading ? null : onSearch,
+            icon: isLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.travel_explore_rounded),
+            label: Text(isLoading ? 'Searching...' : 'Search Live Places'),
           ),
         ),
         const SizedBox(height: 12),
@@ -1466,11 +1513,49 @@ class ExploreScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        Text('${filtered.length} results',
-            style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.black54)),
+        if (locationLabel != null) ...<Widget>[
+          Text(
+            'Showing live places near $locationLabel',
+            style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.black54),
+          ),
+          const SizedBox(height: 6),
+        ] else
+          const Text(
+            'Search a city to load live places.',
+            style: TextStyle(fontWeight: FontWeight.w700, color: Colors.black54),
+          ),
         const SizedBox(height: 10),
-        ...filtered.map((DestinationItem destination) {
-          final bool added = addedDestinationIds.contains(destination.id);
+        if (errorMessage != null) ...<Widget>[
+          Container(
+            padding: const EdgeInsets.all(14),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF4E5),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFF1D3A8)),
+            ),
+            child: Text(
+              errorMessage!,
+              style: const TextStyle(color: Color(0xFF8A5B00), height: 1.4),
+            ),
+          ),
+        ],
+        if (!isLoading && filtered.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE8E0D5)),
+            ),
+            child: const Text(
+              'No places loaded yet. Search for a city to see live results.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.black54, height: 1.4),
+            ),
+          ),
+        ...filtered.map((ExplorePlaceResult place) {
+          final bool added = addedDestinationIds.contains(place.id);
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
@@ -1483,12 +1568,20 @@ class ExploreScreen extends StatelessWidget {
               children: <Widget>[
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-                  child: TravelImage(
-                    destination.image,
-                    height: 170,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
+                  child: place.image.isNotEmpty
+                      ? TravelImage(
+                          place.image,
+                          height: 170,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        )
+                      : Container(
+                          height: 170,
+                          width: double.infinity,
+                          color: const Color(0xFFEFE7DA),
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.place_rounded, color: Color(0xFF9BA3AD), size: 40),
+                        ),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -1499,38 +1592,32 @@ class ExploreScreen extends StatelessWidget {
                         children: <Widget>[
                           Expanded(
                             child: Text(
-                              destination.name,
+                              place.name,
                               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
                             ),
                           ),
-                          Text(
-                            '\$${destination.pricePerDay.toStringAsFixed(0)}/day',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFFF4845F),
+                          if (place.rating != null)
+                            Text(
+                              place.rating!.toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFFF4845F),
+                              ),
                             ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(destination.location, style: const TextStyle(color: Colors.black54)),
+                      Text(place.location, style: const TextStyle(color: Colors.black54)),
                       const SizedBox(height: 8),
-                      Text(destination.description),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 6,
-                        children: destination.tags
-                            .map((String tag) => Chip(
-                                  visualDensity: VisualDensity.compact,
-                                  label: Text(_filterLabel(tag)),
-                                ))
-                            .toList(),
+                      Text(
+                        place.type,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 10),
                       Align(
                         alignment: Alignment.centerRight,
                         child: FilledButton.icon(
-                          onPressed: () => onToggleAddDestination(destination),
+                          onPressed: () => onToggleAddDestination(place),
                           style: FilledButton.styleFrom(
                             backgroundColor:
                                 added ? const Color(0xFF5B8A5E) : const Color(0xFF2196A6),
@@ -1552,7 +1639,6 @@ class ExploreScreen extends StatelessWidget {
   }
 
   Widget _filterChip(String id) {
-    // Shared label mapping keeps top filters and destination tags visually consistent.
     final bool active = selectedFilters.contains(id);
     return Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -1580,6 +1666,26 @@ class ExploreScreen extends StatelessWidget {
         return 'Snorkeling';
       default:
         return id;
+    }
+  }
+
+  bool _matchesFilter(ExplorePlaceResult place, String filter) {
+    final String haystack = '${place.name} ${place.location} ${place.type}'.toLowerCase();
+    switch (filter) {
+      case 'beaches':
+        return haystack.contains('beach') || haystack.contains('coast') || haystack.contains('water');
+      case 'hiking':
+        return haystack.contains('park') || haystack.contains('trail') || haystack.contains('hiking');
+      case 'food':
+        return haystack.contains('restaurant') || haystack.contains('cafe') || haystack.contains('food');
+      case 'nightlife':
+        return haystack.contains('bar') || haystack.contains('nightlife') || haystack.contains('club');
+      case 'museums':
+        return haystack.contains('museum') || haystack.contains('gallery');
+      case 'snorkeling':
+        return haystack.contains('snorkel') || haystack.contains('aquarium') || haystack.contains('tourist');
+      default:
+        return haystack.contains(filter.toLowerCase());
     }
   }
 }
@@ -2054,25 +2160,23 @@ class Trip {
   final List<String> reservations;
 }
 
-class DestinationItem {
-  // Explore-page result model: one place, activity, or destination card.
-  DestinationItem({
+class ExplorePlaceResult {
+  // Explore-page result model returned from the live places API.
+  ExplorePlaceResult({
     required this.id,
     required this.name,
     required this.location,
     required this.image,
-    required this.description,
-    required this.tags,
-    required this.pricePerDay,
+    required this.type,
+    this.rating,
   });
 
   final String id;
   final String name;
   final String location;
   final String image;
-  final String description;
-  final List<String> tags;
-  final double pricePerDay;
+  final String type;
+  final double? rating;
 }
 
 class ItineraryDay {
