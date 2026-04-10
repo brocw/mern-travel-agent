@@ -25,6 +25,7 @@ class _MyAppState extends State<MyApp> {
 
   // Local auth gate for switching between the login screen and the app shell.
   bool _isLoggedIn = false;
+  String? _registrationNotice;
 
   // Navigation and shared trip state for the entire app.
   int _selectedTab = 0;
@@ -222,36 +223,29 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  void _signIn(String email, String password) async {
+  void _register(String firstName, String lastName, String login, String email, String password) async {
     try{
-      String? token;
-
-
-      token = await login(email, password);
-      // This demo uses a local sign-in action so the UI can be exercised without backend auth.
+      await register(firstName, lastName, login, email, password);
+      if (!mounted) return;
       setState(() {
-        _isLoggedIn = true;
-        _selectedTab = 0;
+        _registrationNotice = 'Account created for $email. Check your email and click the verification button before logging in.';
       });
-      if (token != null) {
-        await saveToken(token);
-      }
-    }
-    catch (e) {
+    } catch (e) {
       // IMPORTANT NOTE: In a production app, you should surface authentication errors to the user and not just print them.
       print('Authentication error: $e');
     }
   }
 
-  void _register(String firstName, String lastName, String login, String email, String password) async {
+  void _signIn(String username, String password) async {
     try{
       String? token;
 
 
-      token = await register(firstName, lastName, login, email, password);
+      token = await login(username, password);
       // This demo uses a local sign-in action so the UI can be exercised without backend auth.
       setState(() {
         _isLoggedIn = true;
+        _registrationNotice = null;
         _selectedTab = 0;
       });
       if (token != null) {
@@ -632,6 +626,12 @@ class _MyAppState extends State<MyApp> {
           : LoginScreen(
             onSignIn: _signIn,
             onRegister: _register,
+            registrationNotice: _registrationNotice,
+            onDismissRegistrationNotice: () {
+              setState(() {
+                _registrationNotice = null;
+              });
+            },
           ),
     );
   }
@@ -941,17 +941,21 @@ class LoginScreen extends StatefulWidget {
     super.key,
     required this.onSignIn,
     this.onRegister,
+    this.registrationNotice,
+    this.onDismissRegistrationNotice,
   });
 
-  final Function(String email, String password) onSignIn;
+  final Function(String username, String password) onSignIn;
   final Function(String firstName, String lastName, String login, String email, String password)? onRegister;
+  final String? registrationNotice;
+  final VoidCallback? onDismissRegistrationNotice;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _rememberMe = true;
 
@@ -983,7 +987,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: loginController,
-                  decoration: const InputDecoration(labelText: 'Login', hintText: 'johndoe'),
+                  decoration: const InputDecoration(labelText: 'Username', hintText: 'johndoe'),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -1037,7 +1041,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -1079,6 +1083,45 @@ class _LoginScreenState extends State<LoginScreen> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
+                        if (widget.registrationNotice != null) ...<Widget>[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEAF7EE),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFBFE3C8)),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 2),
+                                  child: Icon(Icons.mark_email_unread_outlined, color: Color(0xFF1E7A3E)),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    widget.registrationNotice!,
+                                    style: const TextStyle(
+                                      color: Color(0xFF1E7A3E),
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: widget.onDismissRegistrationNotice,
+                                  icon: const Icon(Icons.close, size: 18, color: Color(0xFF1E7A3E)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                        ],
                         Container(
                           width: 56,
                           height: 56,
@@ -1100,11 +1143,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 22),
                         TextField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
+                          controller: _usernameController,
+                          keyboardType: TextInputType.text,
                           decoration: InputDecoration(
-                            labelText: 'Email',
-                            prefixIcon: const Icon(Icons.mail_outline_rounded),
+                            labelText: 'Username',
+                            hintText: 'johndoe',
+                            prefixIcon: const Icon(Icons.person_outline_rounded),
                             filled: true,
                             fillColor: const Color(0xFFF7F3EC),
                             border: OutlineInputBorder(
@@ -1153,7 +1197,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: double.infinity,
                           child: FilledButton(
                             onPressed: () {
-                              widget.onSignIn(_emailController.text, _passwordController.text);
+                              widget.onSignIn(_usernameController.text, _passwordController.text);
                             },
                             style: FilledButton.styleFrom(
                               backgroundColor: const Color(0xFF2196A6),

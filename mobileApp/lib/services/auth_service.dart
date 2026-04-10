@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-Future<String?> login(String email, String password) async {
+Future<String?> login(String username, String password) async {
   final response = await http.post(
     Uri.parse('http://cop-4331-22.com:5000/api/login'),
     headers: <String, String>{
@@ -11,7 +11,7 @@ Future<String?> login(String email, String password) async {
       'Accept': 'application/json',
     },
     body: jsonEncode(<String, String>{
-      'login': email.trim(),
+      'login': username.trim(),
       'password': password,
     }),
   );
@@ -42,7 +42,7 @@ Future<String?> login(String email, String password) async {
 
 }
 
-Future<String?> register(String firstName, String lastName, String login, String email, String password) async {
+Future<void> register(String firstName, String lastName, String login, String email, String password) async {
   final response = await http.post(
     Uri.parse('http://cop-4331-22.com:5000/api/register'),
     headers: <String, String>{
@@ -71,16 +71,6 @@ Future<String?> register(String firstName, String lastName, String login, String
   if (backendError != null && backendError.isNotEmpty) {
     throw Exception(backendError);
   }
-
-  final token = decodedBody['token'] ??
-      decodedBody['accessToken'] ??
-      decodedBody['access_token'];
-
-  if (token is! String || token.isEmpty) {
-    throw Exception('Register response did not include a token');
-  }
-
-  return token;
 }
 
 Future<void> saveToken(String token) async {

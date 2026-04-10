@@ -1,5 +1,6 @@
 require("express");
 require("mongodb");
+const { sendVerificationEmail } = require("./sendVerificationEmail.js");
 
 exports.setApp = function (app, client) {
 
@@ -86,7 +87,6 @@ exports.setApp = function (app, client) {
 
       await db.collection("Users").insertOne(newUser);
 
-      const { sendVerificationEmail } = require("./sendVerificationEmail.js");
       await sendVerificationEmail(email, newUserId);
 
       res.status(200).json({
