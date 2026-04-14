@@ -245,6 +245,7 @@ exports.setApp = function (app, client) {
       park: { keyword: "park", placeType: "park", radius: "15000" },
       museum: { keyword: "museum", placeType: "museum", radius: "20000" },
       bar: { keyword: "bar", placeType: "bar", radius: "10000" },
+      lodging: { keyword: "hotel", placeType: "lodging", radius: "10000" },
     };
 
     const config = typeConfig[type] || typeConfig.all;

@@ -36,9 +36,7 @@ interface FlightTicketsProps {
 
 const minutesToDuration = (minutes?: number) => {
   if (!minutes && minutes !== 0) return 'N/A';
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${h}h ${m}m`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 };
 
 const FlightTickets = ({ defaultOutboundDate = '', defaultReturnDate = '' }: FlightTicketsProps) => {
@@ -55,14 +53,9 @@ const FlightTickets = ({ defaultOutboundDate = '', defaultReturnDate = '' }: Fli
   const [returnResults, setReturnResults] = useState<FlightResult[]>([]);
   const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([]);
 
-  const getDepartureToken = (flight: FlightResult) =>
-    flight.departure_token || flight.flights?.[0]?.departure_token || '';
-
-  const getBookingToken = (flight: FlightResult) =>
-    flight.booking_token || flight.flights?.[0]?.booking_token || '';
-
-  const getBookingLink = (option: BookingOption) =>
-    option.url || option.link || option.booking_url || '';
+  const getDepartureToken = (f: FlightResult) => f.departure_token || f.flights?.[0]?.departure_token || '';
+  const getBookingToken = (f: FlightResult) => f.booking_token || f.flights?.[0]?.booking_token || '';
+  const getBookingLink = (o: BookingOption) => o.url || o.link || o.booking_url || '';
 
   const callFlightApi = async (payload: Record<string, unknown>) => {
     const response = await fetch(buildPath('api/searchFlights'), {
@@ -70,320 +63,180 @@ const FlightTickets = ({ defaultOutboundDate = '', defaultReturnDate = '' }: Fli
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...payload, jwtToken: getAccessToken() }),
     });
-
     const data = await response.json();
-    if (data.jwtToken) {
-      storeToken({ accessToken: data.jwtToken });
-    }
+    if (data.jwtToken) storeToken({ accessToken: data.jwtToken });
     return data;
   };
 
   const handleFlightSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
     if (!departureId || !arrivalId || !outboundDate) {
       setError('Please fill departure airport, arrival airport, and departure date.');
       return;
     }
-
     if (tripType === 1 && !returnDate) {
       setError('Please select a return date for round trips.');
       return;
     }
-
     setLoading(true);
-
     try {
-      const data = await callFlightApi({
-        departureId,
-        arrivalId,
-        outboundDate,
-        returnDate: tripType === 1 ? returnDate : undefined,
-        tripType,
-        adults,
-        travelClass,
-      });
-
-      if (data.error) {
-        setError(data.error);
-        setOutboundResults([]);
-        setReturnResults([]);
-        setBookingOptions([]);
-      } else {
-        setOutboundResults(data.flights || []);
-        setReturnResults([]);
-        setBookingOptions([]);
-      }
+      const data = await callFlightApi({ departureId, arrivalId, outboundDate, returnDate: tripType === 1 ? returnDate : undefined, tripType, adults, travelClass });
+      if (data.error) { setError(data.error); setOutboundResults([]); setReturnResults([]); setBookingOptions([]); }
+      else { setOutboundResults(data.flights || []); setReturnResults([]); setBookingOptions([]); }
     } catch (err: any) {
       setError(err.message || 'Unable to search flights.');
-      setOutboundResults([]);
-      setReturnResults([]);
-      setBookingOptions([]);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleGetReturnFlights = async (flight: FlightResult) => {
     const departureToken = getDepartureToken(flight);
-    if (!departureToken) {
-      setError('No departure token found for this flight option.');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
+    if (!departureToken) { setError('No departure token found.'); return; }
+    setLoading(true); setError('');
     try {
-      const data = await callFlightApi({
-        departureId,
-        arrivalId,
-        outboundDate,
-        returnDate: tripType === 1 ? returnDate : undefined,
-        tripType,
-        adults,
-        travelClass,
-        departureToken,
-      });
-
-      if (data.error) {
-        setError(data.error);
-        setReturnResults([]);
-      } else {
-        setReturnResults(data.flights || []);
-        setBookingOptions([]);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Unable to load return flights.');
-      setReturnResults([]);
-    } finally {
-      setLoading(false);
-    }
+      const data = await callFlightApi({ departureId, arrivalId, outboundDate, returnDate: tripType === 1 ? returnDate : undefined, tripType, adults, travelClass, departureToken });
+      if (data.error) { setError(data.error); setReturnResults([]); }
+      else { setReturnResults(data.flights || []); setBookingOptions([]); }
+    } catch (err: any) { setError(err.message || 'Unable to load return flights.'); }
+    finally { setLoading(false); }
   };
 
   const handleGetBookingOptions = async (flight: FlightResult) => {
     const bookingToken = getBookingToken(flight);
-    if (!bookingToken) {
-      setError('No booking token found for this return flight option.');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
+    if (!bookingToken) { setError('No booking token found.'); return; }
+    setLoading(true); setError('');
     try {
-      const data = await callFlightApi({
-        departureId,
-        arrivalId,
-        outboundDate,
-        returnDate: tripType === 1 ? returnDate : undefined,
-        tripType,
-        adults,
-        travelClass,
-        bookingToken,
-      });
-
-      if (data.error) {
-        setError(data.error);
-        setBookingOptions([]);
-      } else {
-        setBookingOptions(data.bookingOptions || []);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Unable to load booking options.');
-      setBookingOptions([]);
-    } finally {
-      setLoading(false);
-    }
+      const data = await callFlightApi({ departureId, arrivalId, outboundDate, returnDate: tripType === 1 ? returnDate : undefined, tripType, adults, travelClass, bookingToken });
+      if (data.error) { setError(data.error); setBookingOptions([]); }
+      else setBookingOptions(data.bookingOptions || []);
+    } catch (err: any) { setError(err.message || 'Unable to load booking options.'); }
+    finally { setLoading(false); }
   };
 
   return (
-    <div id="flightTicketsContainer">
-      <h3>Flight Tickets</h3>
-      <p style={{ marginTop: 0, color: '#555' }}>
-        Enter departure and arrival airport codes plus your travel dates to search available flights.
-      </p>
-      <form onSubmit={handleFlightSearch} style={{ display: 'grid', gap: '10px' }}>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <label style={{ display: 'grid', gap: '4px' }}>
-            <span>Departure Airport</span>
-          <input
-            type="text"
-            value={departureId}
-            onChange={(e) => setDepartureId(e.target.value.toUpperCase())}
-            maxLength={3}
-            placeholder="IATA code (e.g. MCO)"
-            required
-            style={{ padding: '10px', minWidth: '180px' }}
-          />
-          </label>
-          <label style={{ display: 'grid', gap: '4px' }}>
-            <span>Arrival Airport</span>
-          <input
-            type="text"
-            value={arrivalId}
-            onChange={(e) => setArrivalId(e.target.value.toUpperCase())}
-            maxLength={3}
-            placeholder="IATA code (e.g. JFK)"
-            required
-            style={{ padding: '10px', minWidth: '180px' }}
-          />
-          </label>
-          <label style={{ display: 'grid', gap: '4px' }}>
-            <span>Departure Date</span>
-          <input
-            type="date"
-            value={outboundDate}
-            onChange={(e) => setOutboundDate(e.target.value)}
-            required
-            style={{ padding: '10px' }}
-          />
-          </label>
+    <div className="tt-flights-container">
+      <h3 className="tt-flights-title">✈️ Flight Search</h3>
+      <p className="tt-flights-subtitle">Enter airport IATA codes and your dates to find available flights.</p>
+
+      <form onSubmit={handleFlightSearch} className="tt-flights-form">
+        <div className="tt-flights-row">
+          <div className="tt-flights-field">
+            <label className="tt-flights-label">From</label>
+            <input type="text" className="tt-flights-input" value={departureId}
+              onChange={e => setDepartureId(e.target.value.toUpperCase())} maxLength={3} placeholder="MCO" required />
+          </div>
+          <div className="tt-flights-field">
+            <label className="tt-flights-label">To</label>
+            <input type="text" className="tt-flights-input" value={arrivalId}
+              onChange={e => setArrivalId(e.target.value.toUpperCase())} maxLength={3} placeholder="JFK" required />
+          </div>
+          <div className="tt-flights-field">
+            <label className="tt-flights-label">Depart</label>
+            <input type="date" className="tt-flights-input" value={outboundDate} onChange={e => setOutboundDate(e.target.value)} required />
+          </div>
           {tripType === 1 && (
-            <label style={{ display: 'grid', gap: '4px' }}>
-              <span>Return Date</span>
-            <input
-              type="date"
-              value={returnDate}
-              onChange={(e) => setReturnDate(e.target.value)}
-              required={tripType === 1}
-              style={{ padding: '10px' }}
-            />
-            </label>
+            <div className="tt-flights-field">
+              <label className="tt-flights-label">Return</label>
+              <input type="date" className="tt-flights-input" value={returnDate} onChange={e => setReturnDate(e.target.value)} required />
+            </div>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <select
-            value={tripType}
-            onChange={(e) => setTripType(Number(e.target.value) as 1 | 2)}
-            style={{ padding: '10px' }}
-          >
+        <div className="tt-flights-row">
+          <select className="tt-flights-select" value={tripType} onChange={e => setTripType(Number(e.target.value) as 1 | 2)}>
             <option value={1}>Round Trip</option>
             <option value={2}>One Way</option>
           </select>
-
-          <select
-            value={adults}
-            onChange={(e) => setAdults(Number(e.target.value))}
-            style={{ padding: '10px' }}
-          >
-            {[1, 2, 3, 4, 5, 6].map((count) => (
-              <option key={count} value={count}>
-                {count} Adult{count > 1 ? 's' : ''}
-              </option>
-            ))}
+          <select className="tt-flights-select" value={adults} onChange={e => setAdults(Number(e.target.value))}>
+            {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n} Adult{n > 1 ? 's' : ''}</option>)}
           </select>
-
-          <select
-            value={travelClass}
-            onChange={(e) => setTravelClass(Number(e.target.value) as 1 | 2 | 3 | 4)}
-            style={{ padding: '10px' }}
-          >
+          <select className="tt-flights-select" value={travelClass} onChange={e => setTravelClass(Number(e.target.value) as 1|2|3|4)}>
             <option value={1}>Economy</option>
             <option value={2}>Premium Economy</option>
             <option value={3}>Business</option>
             <option value={4}>First</option>
           </select>
-
-          <button type="submit" className="buttons" disabled={loading}>
-            {loading ? 'Searching Flights...' : 'Find Flights'}
+          <button type="submit" className="tt-flights-submit" disabled={loading}>
+            {loading ? <><span className="tt-trip-planner-spinner" /> Searching...</> : 'Find Flights'}
           </button>
         </div>
       </form>
 
-      {error && <p style={{ color: '#d32f2f', marginTop: '10px' }}>{error}</p>}
+      {error && <div className="tt-flights-error">⚠ {error}</div>}
 
-      {!loading && !error && outboundResults.length > 0 && (
-        <div className="scrollable-list" style={{ marginTop: '12px', maxHeight: '420px' }}>
+      {!loading && outboundResults.length > 0 && (
+        <div className="tt-flights-results">
+          <h4 className="tt-flights-results-heading">Outbound Flights</h4>
           {outboundResults.map((flight, idx) => (
-            <div key={idx} className="card-item">
-              <h4>Outbound Option {idx + 1}</h4>
-              <p>
-                <strong>Price:</strong> {flight.price ?? 'N/A'}
-              </p>
-              <p>
-                <strong>Total Duration:</strong> {minutesToDuration(flight.total_duration)}
-              </p>
-              {flight.flights?.[0] && (
-                <p>
-                  <strong>Airline:</strong> {flight.flights[0].airline || 'N/A'}
-                </p>
-              )}
-              {flight.flights?.[0]?.departure_airport && flight.flights?.[0]?.arrival_airport && (
-                <p>
-                  <strong>Route:</strong> {flight.flights[0].departure_airport?.id} ({flight.flights[0].departure_airport?.time}) to {flight.flights[0].arrival_airport?.id} ({flight.flights[0].arrival_airport?.time})
-                </p>
-              )}
-              <button
-                type="button"
-                className="buttons"
-                onClick={() => handleGetReturnFlights(flight)}
-                disabled={loading || !getDepartureToken(flight)}
-              >
-                Get Return Flights
+            <div key={idx} className="tt-flight-card">
+              <div className="tt-flight-card-top">
+                <div className="tt-flight-card-route">
+                  <span className="tt-flight-airport">{flight.flights?.[0]?.departure_airport?.id || departureId}</span>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--tt-steel)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                  </svg>
+                  <span className="tt-flight-airport">{flight.flights?.[0]?.arrival_airport?.id || arrivalId}</span>
+                </div>
+                <div className="tt-flight-price">{flight.price ? `$${flight.price}` : 'N/A'}</div>
+              </div>
+              <div className="tt-flight-card-meta">
+                {flight.flights?.[0]?.airline && <span>{flight.flights[0].airline}</span>}
+                <span>·</span>
+                <span>{minutesToDuration(flight.total_duration)}</span>
+                {flight.flights?.[0]?.departure_airport?.time && (
+                  <><span>·</span><span>{flight.flights[0].departure_airport.time} → {flight.flights[0].arrival_airport?.time}</span></>
+                )}
+              </div>
+              <button className="tt-flights-action-btn" onClick={() => handleGetReturnFlights(flight)} disabled={loading || !getDepartureToken(flight)}>
+                Select — Get Return Flights →
               </button>
             </div>
           ))}
         </div>
       )}
 
-      {!loading && !error && returnResults.length > 0 && (
-        <div className="scrollable-list" style={{ marginTop: '12px', maxHeight: '420px' }}>
-          <h4>Return Flight Options</h4>
+      {!loading && returnResults.length > 0 && (
+        <div className="tt-flights-results">
+          <h4 className="tt-flights-results-heading">Return Flights</h4>
           {returnResults.map((flight, idx) => (
-            <div key={`return-${idx}`} className="card-item">
-              <h4>Return Option {idx + 1}</h4>
-              <p>
-                <strong>Price:</strong> {flight.price ?? 'N/A'}
-              </p>
-              <p>
-                <strong>Total Duration:</strong> {minutesToDuration(flight.total_duration)}
-              </p>
-              {flight.flights?.[0] && (
-                <p>
-                  <strong>Airline:</strong> {flight.flights[0].airline || 'N/A'}
-                </p>
-              )}
-              <button
-                type="button"
-                className="buttons"
-                onClick={() => handleGetBookingOptions(flight)}
-                disabled={loading || !getBookingToken(flight)}
-              >
-                Get Booking Links
+            <div key={idx} className="tt-flight-card">
+              <div className="tt-flight-card-top">
+                <div className="tt-flight-card-route">
+                  <span className="tt-flight-airport">{flight.flights?.[0]?.departure_airport?.id || arrivalId}</span>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--tt-steel)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                  </svg>
+                  <span className="tt-flight-airport">{flight.flights?.[0]?.arrival_airport?.id || departureId}</span>
+                </div>
+                <div className="tt-flight-price">{flight.price ? `$${flight.price}` : 'N/A'}</div>
+              </div>
+              <div className="tt-flight-card-meta">
+                {flight.flights?.[0]?.airline && <span>{flight.flights[0].airline}</span>}
+                <span>·</span><span>{minutesToDuration(flight.total_duration)}</span>
+              </div>
+              <button className="tt-flights-action-btn" onClick={() => handleGetBookingOptions(flight)} disabled={loading || !getBookingToken(flight)}>
+                Select — Get Booking Links →
               </button>
             </div>
           ))}
         </div>
       )}
 
-      {!loading && !error && bookingOptions.length > 0 && (
-        <div className="scrollable-list" style={{ marginTop: '12px', maxHeight: '420px' }}>
-          <h4>Booking Options</h4>
+      {!loading && bookingOptions.length > 0 && (
+        <div className="tt-flights-results">
+          <h4 className="tt-flights-results-heading">Book Your Flight</h4>
           {bookingOptions.map((option, idx) => (
-            <div key={`book-${idx}`} className="card-item">
-              <p>
-                <strong>Provider:</strong> {option.name || option.source || `Option ${idx + 1}`}
-              </p>
-              {option.price && (
-                <p>
-                  <strong>Price:</strong> {option.price}
-                </p>
-              )}
+            <div key={idx} className="tt-flight-card tt-flight-card-booking">
+              <div className="tt-flight-card-top">
+                <span className="tt-flight-provider">{option.name || option.source || `Option ${idx + 1}`}</span>
+                {option.price && <div className="tt-flight-price">{option.price}</div>}
+              </div>
               {getBookingLink(option) ? (
-                <a
-                  href={getBookingLink(option)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="buttons"
-                  style={{ display: 'inline-block' }}
-                >
-                  Buy Ticket
+                <a href={getBookingLink(option)} target="_blank" rel="noopener noreferrer" className="tt-flights-action-btn tt-flights-book-btn">
+                  Book Now ↗
                 </a>
               ) : (
-                <p>No booking link available for this option.</p>
+                <p className="tt-flight-no-link">No booking link available.</p>
               )}
             </div>
           ))}
