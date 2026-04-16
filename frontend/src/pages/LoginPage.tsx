@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Login from "../components/Login";
 // import triptasticLogo from "../assets/triptastic-logo.png";
 import heroBg from "../assets/hero-bg.png";
@@ -48,7 +49,14 @@ const features = [
 
 const LoginPage = () => {
   const [showLogin, setShowLogin] = useState(false);
+  const navigate = useNavigate();
 
+  useEffect(() => {
+    const userData = localStorage.getItem('user_data');
+    if (userData) {
+      navigate('/search');
+    }
+  }, [navigate]);
   return (
     <div className="th-landing">
       {/* ── Navbar ── */}
