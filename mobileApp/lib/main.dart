@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import './services/auth_service.dart';
 
 void main() {
@@ -25,7 +22,42 @@ class _MyAppState extends State<MyApp> {
 
   // Local auth gate for switching between the login screen and the app shell.
   bool _isLoggedIn = false;
+  bool _isAuthBootstrapping = true;
+  String? _currentUserId;
   String? _registrationNotice;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrapAuthState();
+  }
+
+  Future<void> _bootstrapAuthState() async {
+    try {
+      final String? token = await getToken();
+      final String? userId = await getCurrentUserId();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _currentUserId = userId;
+        _isLoggedIn =
+            token != null && token.isNotEmpty && userId != null && userId.isNotEmpty;
+        _isAuthBootstrapping = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isLoggedIn = false;
+        _currentUserId = null;
+        _isAuthBootstrapping = false;
+      });
+    }
+  }
 
   // Live explore state backed by the searchLocation/getPlaces API flow.
   bool _exploreLoading = false;
@@ -172,6 +204,25 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
+  void _showGlobalSnackBar(String message) {
+    final BuildContext? currentContext = _appNavigatorKey.currentContext;
+    if (currentContext == null) {
+      debugPrint('Unable to show snackbar: navigator context unavailable. Message: $message');
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.maybeOf(currentContext);
+    if (messenger == null) {
+      debugPrint('Unable to show snackbar: ScaffoldMessenger unavailable. Message: $message');
+      return;
+    }
+
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   void _register(String firstName, String lastName, String login, String email, String password) async {
     try{
       await register(firstName, lastName, login, email, password);
@@ -191,19 +242,28 @@ class _MyAppState extends State<MyApp> {
 
 
       token = await login(username, password);
-      // This demo uses a local sign-in action so the UI can be exercised without backend auth.
+      if (token == null || token.isEmpty) {
+        throw Exception('Login did not return a valid auth token.');
+      }
+
+      await saveToken(token);
+      final String? userId = await getCurrentUserId();
+      if (userId == null || userId.isEmpty) {
+        throw Exception('Token did not include a valid user identity.');
+      }
+      if (!mounted) return;
+
       setState(() {
+        _currentUserId = userId;
         _isLoggedIn = true;
         _registrationNotice = null;
         _selectedTab = 0;
       });
-      if (token != null) {
-        await saveToken(token);
-      }
     }
     catch (e) {
-      // IMPORTANT NOTE: In a production app, you should surface authentication errors to the user and not just print them.
-      print('Authentication error: $e');
+      debugPrint('Sign in failed: $e');
+      if (!mounted) return;
+      _showGlobalSnackBar('Sign in failed: $e');
     }
   }
 
@@ -211,8 +271,34 @@ class _MyAppState extends State<MyApp> {
     await logout();
     setState(() {
       _isLoggedIn = false;
+      _currentUserId = null;
       _selectedTab = 0;
     });
+  }
+
+  Future<bool> _handleSessionExpired(Object error) async {
+    if (error is! AuthExpiredException) {
+      return false;
+    }
+
+    await logout();
+    if (!mounted) {
+      return true;
+    }
+
+    setState(() {
+      _isLoggedIn = false;
+      _currentUserId = null;
+      _selectedTab = 0;
+      _exploreLoading = false;
+      _exploreError = null;
+      _explorePlaces = <ExplorePlaceResult>[];
+      _exploreLocationLabel = null;
+    });
+
+    _showGlobalSnackBar('Session expired. Please log in again.');
+
+    return true;
   }
 
   Future<void> _confirmSignOut() async {
@@ -320,6 +406,11 @@ class _MyAppState extends State<MyApp> {
             : null;
       });
     } catch (e) {
+      final bool handled = await _handleSessionExpired(e);
+      if (handled) {
+        return;
+      }
+
       if (!mounted) {
         return;
       }
@@ -551,7 +642,13 @@ class _MyAppState extends State<MyApp> {
       title: 'Travel Helper',
       debugShowCheckedModeBanner: false,
       theme: theme,
-      home: _isLoggedIn
+      home: _isAuthBootstrapping
+          ? const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            )
+          : _isLoggedIn
           ? Scaffold(
               appBar: AppBar(
                 title: const Text('Travel Helper'),

@@ -3,6 +3,27 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+const String _authTokenKey = 'auth_token';
+const String _authUserIdKey = 'auth_user_id';
+const String _authFirstNameKey = 'auth_first_name';
+const String _authLastNameKey = 'auth_last_name';
+
+const String _apiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://cop-4331-22.com:5000',
+);
+
+// Helper function to construct API URIs
+Uri _apiUri(String endpoint) {
+  final String trimmedBase = _apiBaseUrl.endsWith('/')
+      ? _apiBaseUrl.substring(0, _apiBaseUrl.length - 1)
+      : _apiBaseUrl;
+  final String normalizedEndpoint = endpoint.startsWith('/')
+      ? endpoint.substring(1)
+      : endpoint;
+  return Uri.parse('$trimmedBase/api/$normalizedEndpoint');
+}
+
 class AuthExpiredException implements Exception {
   final String message;
 
@@ -18,9 +39,63 @@ bool _isJwtExpiredError(String error) {
       (normalized.contains('not longer valid') || normalized.contains('no longer valid'));
 }
 
+Map<String, dynamic>? _decodeJwtPayload(String token) {
+  final List<String> parts = token.split('.');
+  if (parts.length != 3) {
+    return null;
+  }
+
+  final String payload = parts[1];
+  final String normalized = base64Url.normalize(payload);
+  try {
+    final String decoded = utf8.decode(base64Url.decode(normalized));
+    final dynamic parsed = jsonDecode(decoded);
+    if (parsed is Map<String, dynamic>) {
+      return parsed;
+    }
+  } catch (_) {
+    return null;
+  }
+
+  return null;
+}
+
+Future<void> _persistIdentityFromToken(
+  SharedPreferences prefs,
+  String token,
+) async {
+  final Map<String, dynamic>? payload = _decodeJwtPayload(token);
+  final String userId = payload?['userId']?.toString() ?? '';
+
+  if (userId.isEmpty) {
+    throw Exception('Token missing userId claim.');
+  }
+
+  final String firstName = payload?['firstName']?.toString() ?? '';
+  final String lastName = payload?['lastName']?.toString() ?? '';
+
+  // Temporary verification log for Step 3: confirms JWT claim decoding on device.
+  debugPrint(
+    'JWT identity decoded -> userId: $userId, firstName: $firstName, lastName: $lastName',
+  );
+
+  await prefs.setString(_authUserIdKey, userId);
+  if (firstName.isNotEmpty) {
+    await prefs.setString(_authFirstNameKey, firstName);
+  } else {
+    await prefs.remove(_authFirstNameKey);
+  }
+
+  if (lastName.isNotEmpty) {
+    await prefs.setString(_authLastNameKey, lastName);
+  } else {
+    await prefs.remove(_authLastNameKey);
+  }
+}
+
 Future<String?> login(String email, String password) async {
   final response = await http.post(
-    Uri.parse('http://cop-4331-22.com:5000/api/login'),
+    _apiUri('login'),
     headers: <String, String>{
       'Content-Type': 'application/json; charset=UTF-8',
       'Accept': 'application/json',
@@ -59,7 +134,7 @@ Future<String?> login(String email, String password) async {
 
 Future<void> register(String firstName, String lastName, String login, String email, String password) async {
   final response = await http.post(
-    Uri.parse('http://cop-4331-22.com:5000/api/register'),
+    _apiUri('register'),
     headers: <String, String>{
       'Content-Type': 'application/json; charset=UTF-8',
       'Accept': 'application/json',
@@ -90,17 +165,36 @@ Future<void> register(String firstName, String lastName, String login, String em
 
 Future<void> saveToken(String token) async {
   final prefs = await SharedPreferences.getInstance();
-  await prefs.setString('auth_token', token);
+  await prefs.setString(_authTokenKey, token);
+  await _persistIdentityFromToken(prefs, token);
 }
 
 Future<String?> getToken() async {
   final prefs = await SharedPreferences.getInstance();
-  return prefs.getString('auth_token');
+  return prefs.getString(_authTokenKey);
+}
+
+Future<String?> getCurrentUserId() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString(_authUserIdKey);
+}
+
+Future<String?> getCurrentFirstName() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString(_authFirstNameKey);
+}
+
+Future<String?> getCurrentLastName() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString(_authLastNameKey);
 }
 
 Future<void> logout() async {
   final prefs = await SharedPreferences.getInstance();
-  await prefs.remove('auth_token');
+  await prefs.remove(_authTokenKey);
+  await prefs.remove(_authUserIdKey);
+  await prefs.remove(_authFirstNameKey);
+  await prefs.remove(_authLastNameKey);
 }
 
 // Helper function to post to protected endpoints and refresh the token if needed
@@ -116,7 +210,7 @@ Future<Map<String, dynamic>> postProtectedAndRefreshToken(String endpoint, Map<S
   };
 
   final response = await http.post(
-    Uri.parse('http://cop-4331-22.com:5000/api/$endpoint'),
+    _apiUri(endpoint),
     headers: <String, String>{
       'Content-Type': 'application/json; charset=UTF-8',
       'Accept': 'application/json',
