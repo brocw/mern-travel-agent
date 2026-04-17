@@ -13,7 +13,8 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  final GlobalKey<NavigatorState> _appNavigatorKey = GlobalKey<NavigatorState>();
+  final GlobalKey<NavigatorState> _appNavigatorKey =
+      GlobalKey<NavigatorState>();
 
   // Global app palette used across the mobile UI.
   static const _beige = Color(0xFFF9F6F1);
@@ -36,15 +37,16 @@ class _MyAppState extends State<MyApp> {
     try {
       final String? token = await getToken();
       final String? userIdValue = await getCurrentUserId();
-      final int? userId = userIdValue == null ? null : int.tryParse(userIdValue);
+      final int? userId = userIdValue == null
+          ? null
+          : int.tryParse(userIdValue);
       if (!mounted) {
         return;
       }
 
       setState(() {
         _currentUserId = userId;
-        _isLoggedIn =
-            token != null && token.isNotEmpty && userId != null;
+        _isLoggedIn = token != null && token.isNotEmpty && userId != null;
         _isAuthBootstrapping = false;
         if (!_isLoggedIn) {
           _trips.clear();
@@ -79,7 +81,8 @@ class _MyAppState extends State<MyApp> {
       }
 
       // Check for errors in the response
-      if (response['error'] != null && response['error'].toString().isNotEmpty) {
+      if (response['error'] != null &&
+          response['error'].toString().isNotEmpty) {
         print('Error fetching trips: ${response['error']}');
         return;
       }
@@ -88,14 +91,19 @@ class _MyAppState extends State<MyApp> {
       final List<dynamic> tripsData = response['trips'] ?? [];
       final List<Trip> fetchedTrips = <Trip>[];
 
-      for (final tripData in tripsData) {
+      final List<Future<Trip?>> tripFutures = tripsData.map<Future<Trip?>>((
+        dynamic tripData,
+      ) async {
         try {
+          final String tripLocation =
+              tripData['Location']?.toString() ?? 'Unknown Location';
+
           // Web app stores trip items as Items[].{ type, data }, where data has name/address/etc.
-          final List<dynamic> items =
-              tripData['Items'] is List ? tripData['Items'] as List<dynamic> : <dynamic>[];
+          final List<dynamic> items = tripData['Items'] is List
+              ? tripData['Items'] as List<dynamic>
+              : <dynamic>[];
           final List<String> itemNames = <String>[];
-          String imageUrl =
-              'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80';
+          final String imageUrl = await _resolveTripPreviewImage(tripLocation);
           String flightInfo = '';
           String hotelAddress = '';
 
@@ -115,12 +123,10 @@ class _MyAppState extends State<MyApp> {
               itemNames.add(name);
             }
 
-            if ((data['image']?.toString().isNotEmpty ?? false) &&
-                imageUrl.contains('unsplash.com/photo-1507525428034-b723cf961d3e')) {
-              imageUrl = data['image'].toString();
-            }
-
-            if (itemType == 'flight' && flightInfo.isEmpty && name != null && name.isNotEmpty) {
+            if (itemType == 'flight' &&
+                flightInfo.isEmpty &&
+                name != null &&
+                name.isNotEmpty) {
               flightInfo = name;
             }
 
@@ -140,21 +146,29 @@ class _MyAppState extends State<MyApp> {
                 : 'Created: $createdAt';
           }
 
-          final Trip trip = Trip(
+          return Trip(
             id: tripData['_id']?.toString() ?? 'unknown',
-            destination: tripData['Location']?.toString() ?? 'Unknown Destination',
-            location: tripData['Location']?.toString() ?? 'Unknown Location',
+            destination: tripLocation,
+            location: tripLocation,
             dates: formattedDates,
             image: imageUrl,
             estimatedBudget: 0.0,
             flightInfo: flightInfo,
             hotelAddress: hotelAddress,
-            reservations: itemNames.isNotEmpty ? itemNames : <String>['No items added yet'],
+            reservations: itemNames.isNotEmpty
+                ? itemNames
+                : <String>['No items added yet'],
             backendItems: items,
           );
-          fetchedTrips.add(trip);
         } catch (e) {
           print('Error parsing trip: $e');
+          return null;
+        }
+      }).toList();
+
+      for (final Trip? trip in await Future.wait(tripFutures)) {
+        if (trip != null) {
+          fetchedTrips.add(trip);
         }
       }
 
@@ -163,9 +177,56 @@ class _MyAppState extends State<MyApp> {
         _trips.addAll(fetchedTrips);
       });
       print('Loaded ${fetchedTrips.length} trips from backend');
+
+      if (_trips.isNotEmpty && _activeTrip.id != 'placeholder') {
+        await _loadExplorePlacesForLocation(_activeTrip.location);
+      } else if (mounted) {
+        setState(() {
+          _exploreLoading = false;
+          _exploreError = null;
+          _exploreLocationLabel = null;
+          _explorePlaces = <ExplorePlaceResult>[];
+        });
+      }
     } catch (e) {
       print('Exception fetching trips: $e');
     }
+  }
+
+  Future<String> _resolveTripPreviewImage(String location) async {
+    final String cacheKey = location.trim().toLowerCase();
+    final String? cachedImage = _tripPreviewImageCache[cacheKey];
+    if (cachedImage != null && cachedImage.isNotEmpty) {
+      return cachedImage;
+    }
+
+    try {
+      final Map<String, dynamic> geocodedLocation = await searchLocation(
+        location,
+      );
+      final double lat = (geocodedLocation['lat'] as num).toDouble();
+      final double lng = (geocodedLocation['lng'] as num).toDouble();
+      final Map<String, dynamic> placesResponse = await getPlaces(lat, lng);
+      final List<dynamic> rawPlaces =
+          (placesResponse['places'] as List<dynamic>?) ?? <dynamic>[];
+
+      for (final dynamic rawPlace in rawPlaces) {
+        if (rawPlace is! Map) {
+          continue;
+        }
+
+        final dynamic rawImage = rawPlace['image'];
+        final String image = rawImage?.toString() ?? '';
+        if (image.isNotEmpty) {
+          _tripPreviewImageCache[cacheKey] = image;
+          return image;
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to resolve preview image for $location: $e');
+    }
+
+    return 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80';
   }
 
   // Live explore state backed by the searchLocation/getPlaces API flow.
@@ -178,13 +239,13 @@ class _MyAppState extends State<MyApp> {
   int _selectedTab = 0;
   int _activeTripIndex = 0;
   String _landingQuery = '';
-  String _exploreQuery = '';
   Set<String> _selectedFilters = <String>{};
   final Set<String> _savedTrips = <String>{'trip-1', 'trip-3'};
   final Set<String> _addedDestinationIds = <String>{};
 
   // Trips are now loaded from backend via _fetchTripsFromBackend()
   final List<Trip> _trips = <Trip>[];
+  final Map<String, String> _tripPreviewImageCache = <String, String>{};
 
   final List<ItineraryDay> _itinerary = <ItineraryDay>[
     ItineraryDay(
@@ -260,7 +321,8 @@ class _MyAppState extends State<MyApp> {
         destination: 'No Trip Selected',
         location: 'Create a trip to get started',
         dates: 'No dates',
-        image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+        image:
+            'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
         estimatedBudget: 0,
         flightInfo: '',
         hotelAddress: '',
@@ -284,28 +346,37 @@ class _MyAppState extends State<MyApp> {
   void _showGlobalSnackBar(String message) {
     final BuildContext? currentContext = _appNavigatorKey.currentContext;
     if (currentContext == null) {
-      debugPrint('Unable to show snackbar: navigator context unavailable. Message: $message');
+      debugPrint(
+        'Unable to show snackbar: navigator context unavailable. Message: $message',
+      );
       return;
     }
 
     final messenger = ScaffoldMessenger.maybeOf(currentContext);
     if (messenger == null) {
-      debugPrint('Unable to show snackbar: ScaffoldMessenger unavailable. Message: $message');
+      debugPrint(
+        'Unable to show snackbar: ScaffoldMessenger unavailable. Message: $message',
+      );
       return;
     }
 
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _register(String firstName, String lastName, String login, String email, String password) async {
-    try{
+  void _register(
+    String firstName,
+    String lastName,
+    String login,
+    String email,
+    String password,
+  ) async {
+    try {
       await register(firstName, lastName, login, email, password);
       if (!mounted) return;
       setState(() {
-        _registrationNotice = 'Account created for $email. Check your email and click the verification button before logging in.';
+        _registrationNotice =
+            'Account created for $email. Check your email and click the verification button before logging in.';
       });
     } catch (e) {
       // IMPORTANT NOTE: In a production app, you should surface authentication errors to the user and not just print them.
@@ -314,9 +385,8 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _signIn(String username, String password) async {
-    try{
+    try {
       String? token;
-
 
       token = await login(username, password);
       if (token == null || token.isEmpty) {
@@ -325,7 +395,9 @@ class _MyAppState extends State<MyApp> {
 
       await saveToken(token);
       final String? userIdValue = await getCurrentUserId();
-      final int? userId = userIdValue == null ? null : int.tryParse(userIdValue);
+      final int? userId = userIdValue == null
+          ? null
+          : int.tryParse(userIdValue);
       if (userId == null) {
         throw Exception('Token did not include a valid user identity.');
       }
@@ -341,8 +413,7 @@ class _MyAppState extends State<MyApp> {
       });
 
       await _fetchTripsFromBackend(userId);
-    }
-    catch (e) {
+    } catch (e) {
       debugPrint('Sign in failed: $e');
       if (!mounted) return;
       _showGlobalSnackBar('Sign in failed: $e');
@@ -440,11 +511,11 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  Future<void> _searchExplorePlaces() async {
-    final String searchTerm = _exploreQuery.trim();
-    if (searchTerm.isEmpty) {
+  Future<void> _loadExplorePlacesForLocation(String searchTerm) async {
+    final String normalizedLocation = searchTerm.trim();
+    if (normalizedLocation.isEmpty) {
       setState(() {
-        _exploreError = 'Enter a city or destination to search.';
+        _exploreError = 'Enter a city or destination to load places.';
         _explorePlaces = <ExplorePlaceResult>[];
         _exploreLocationLabel = null;
       });
@@ -458,30 +529,39 @@ class _MyAppState extends State<MyApp> {
     });
 
     try {
-      final Map<String, dynamic> location = await searchLocation(searchTerm);
+      final Map<String, dynamic> location = await searchLocation(
+        normalizedLocation,
+      );
       final double lat = (location['lat'] as num).toDouble();
       final double lng = (location['lng'] as num).toDouble();
-      final String resolvedLocation = location['name']?.toString() ?? searchTerm;
+      final String resolvedLocation =
+          location['name']?.toString() ?? normalizedLocation;
       final Map<String, dynamic> placesResponse = await getPlaces(lat, lng);
-      final List<dynamic> rawPlaces = (placesResponse['places'] as List<dynamic>?) ?? <dynamic>[];
+      final List<dynamic> rawPlaces =
+          (placesResponse['places'] as List<dynamic>?) ?? <dynamic>[];
 
-      final List<ExplorePlaceResult> places = rawPlaces.map<ExplorePlaceResult>((dynamic raw) {
-        final Map<String, dynamic> placeMap = raw as Map<String, dynamic>;
-        return ExplorePlaceResult(
-          id: placeMap['placeId']?.toString() ?? placeMap['name']?.toString() ?? '',
-          name: placeMap['name']?.toString() ?? 'Unknown place',
-          location: placeMap['address']?.toString() ?? resolvedLocation,
-          image: placeMap['image']?.toString() ?? '',
-          rating: (placeMap['rating'] as num?)?.toDouble(),
-          type: placeMap['type']?.toString() ?? 'place',
-          lat: (placeMap['lat'] as num?)?.toDouble(),
-          lng: (placeMap['lng'] as num?)?.toDouble(),
-          address: placeMap['address']?.toString(),
-          date: placeMap['date']?.toString(),
-          venue: placeMap['venue']?.toString(),
-          ticketUrl: placeMap['ticketUrl']?.toString(),
-        );
-      }).toList();
+      final List<ExplorePlaceResult> places = rawPlaces.map<ExplorePlaceResult>(
+        (dynamic raw) {
+          final Map<String, dynamic> placeMap = raw as Map<String, dynamic>;
+          return ExplorePlaceResult(
+            id:
+                placeMap['placeId']?.toString() ??
+                placeMap['name']?.toString() ??
+                '',
+            name: placeMap['name']?.toString() ?? 'Unknown place',
+            location: placeMap['address']?.toString() ?? resolvedLocation,
+            image: placeMap['image']?.toString() ?? '',
+            rating: (placeMap['rating'] as num?)?.toDouble(),
+            type: placeMap['type']?.toString() ?? 'place',
+            lat: (placeMap['lat'] as num?)?.toDouble(),
+            lng: (placeMap['lng'] as num?)?.toDouble(),
+            address: placeMap['address']?.toString(),
+            date: placeMap['date']?.toString(),
+            venue: placeMap['venue']?.toString(),
+            ticketUrl: placeMap['ticketUrl']?.toString(),
+          );
+        },
+      ).toList();
 
       if (!mounted) {
         return;
@@ -493,8 +573,8 @@ class _MyAppState extends State<MyApp> {
         _explorePlaces = places;
         _exploreError = places.isEmpty
             ? (placesResponse['error']?.toString().isNotEmpty == true
-                ? placesResponse['error'].toString()
-                : 'No places found for this location.')
+                  ? placesResponse['error'].toString()
+                  : 'No places found for this location.')
             : null;
       });
     } catch (e) {
@@ -516,11 +596,125 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  Future<String?> _promptForValidatedTripLocation() async {
+    final BuildContext? dialogHostContext = _appNavigatorKey.currentContext;
+    if (dialogHostContext == null) {
+      return null;
+    }
+
+    String enteredLocation = '';
+    String? dialogError;
+    bool validating = false;
+
+    final String? resolvedLocation = await showDialog<String>(
+      context: dialogHostContext,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            Future<void> validateAndReturnLocation() async {
+              final String normalizedLocation = enteredLocation.trim();
+              if (normalizedLocation.isEmpty) {
+                setDialogState(() {
+                  dialogError = 'Enter a valid location.';
+                });
+                return;
+              }
+
+              setDialogState(() {
+                dialogError = null;
+                validating = true;
+              });
+
+              try {
+                final Map<String, dynamic> location = await searchLocation(
+                  normalizedLocation,
+                );
+                final String resolved =
+                    location['name']?.toString() ?? normalizedLocation;
+                if (resolved.trim().isEmpty) {
+                  setDialogState(() {
+                    dialogError = 'That location could not be verified.';
+                    validating = false;
+                  });
+                  return;
+                }
+
+                if (!mounted) {
+                  return;
+                }
+
+                Navigator.of(dialogContext).pop(resolved);
+              } catch (e) {
+                final bool handled = await _handleSessionExpired(e);
+                if (handled) {
+                  Navigator.of(dialogContext).pop();
+                  return;
+                }
+
+                if (!mounted) {
+                  return;
+                }
+
+                setDialogState(() {
+                  dialogError = 'Enter a valid location.';
+                  validating = false;
+                });
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Create New Trip'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text('Enter a valid trip location to continue.'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    autofocus: true,
+                    enabled: !validating,
+                    decoration: InputDecoration(
+                      hintText: 'Enter destination location',
+                      border: const OutlineInputBorder(),
+                      errorText: dialogError,
+                    ),
+                    onChanged: (String value) {
+                      enteredLocation = value;
+                    },
+                    onSubmitted: (_) {
+                      if (!validating) {
+                        validateAndReturnLocation();
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: validating
+                      ? null
+                      : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: validating ? null : validateAndReturnLocation,
+                  child: Text(validating ? 'Checking...' : 'Create'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    return resolvedLocation;
+  }
+
   // Helper method to construct item structure for backend API from ExplorePlaceResult
   Map<String, dynamic> _buildItemStructure(ExplorePlaceResult place) {
     // Determine if this is a place or event based on available data
     final bool isEvent = place.venue != null || place.date != null;
-    
+
     final Map<String, dynamic> data = <String, dynamic>{
       'name': place.name,
       'image': place.image,
@@ -547,10 +741,7 @@ class _MyAppState extends State<MyApp> {
       data['placeId'] = place.id;
     }
 
-    return <String, dynamic>{
-      'type': isEvent ? 'event' : 'place',
-      'data': data,
-    };
+    return <String, dynamic>{'type': isEvent ? 'event' : 'place', 'data': data};
   }
 
   void _toggleAddDestination(ExplorePlaceResult destination) async {
@@ -565,14 +756,17 @@ class _MyAppState extends State<MyApp> {
         // Local placeholder trip, just update UI
         setState(() {
           _addedDestinationIds.remove(destination.id);
-          _itinerary[1].activities.removeWhere((PlannedActivity activity) => activity.id == 'added-${destination.id}');
+          _itinerary[1].activities.removeWhere(
+            (PlannedActivity activity) =>
+                activity.id == 'added-${destination.id}',
+          );
         });
         return;
       }
 
       try {
         _showGlobalSnackBar('Removing destination from trip...');
-        
+
         // Find the item index in the backend trip by matching placeId
         int itemIndex = -1;
         if (_activeTrip.backendItems != null) {
@@ -605,15 +799,21 @@ class _MyAppState extends State<MyApp> {
         }
 
         // Check for errors in response
-        if (response['error'] != null && response['error'].toString().isNotEmpty) {
-          _showGlobalSnackBar('Error removing destination: ${response['error']}');
+        if (response['error'] != null &&
+            response['error'].toString().isNotEmpty) {
+          _showGlobalSnackBar(
+            'Error removing destination: ${response['error']}',
+          );
           return;
         }
 
         // Update local state
         setState(() {
           _addedDestinationIds.remove(destination.id);
-          _itinerary[1].activities.removeWhere((PlannedActivity activity) => activity.id == 'added-${destination.id}');
+          _itinerary[1].activities.removeWhere(
+            (PlannedActivity activity) =>
+                activity.id == 'added-${destination.id}',
+          );
         });
 
         // Refresh trip from backend to get latest state
@@ -642,7 +842,7 @@ class _MyAppState extends State<MyApp> {
 
     try {
       _showGlobalSnackBar('Adding destination to trip...');
-      
+
       final Map<String, dynamic> item = _buildItemStructure(destination);
       final response = await addToTrip(userId, tripId, item);
 
@@ -651,7 +851,8 @@ class _MyAppState extends State<MyApp> {
       }
 
       // Check for errors in response
-      if (response['error'] != null && response['error'].toString().isNotEmpty) {
+      if (response['error'] != null &&
+          response['error'].toString().isNotEmpty) {
         _showGlobalSnackBar('Error adding destination: ${response['error']}');
         return;
       }
@@ -699,34 +900,7 @@ class _MyAppState extends State<MyApp> {
       return;
     }
 
-    // Show dialog to get location from user
-    String enteredLocation = '';
-    final String? location = await showDialog<String>(
-      context: dialogHostContext,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Create New Trip'),
-        content: TextField(
-          onChanged: (String value) {
-            enteredLocation = value;
-          },
-          decoration: const InputDecoration(
-            hintText: 'Enter destination location',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, enteredLocation),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
-
+    final String? location = await _promptForValidatedTripLocation();
     if (location == null || location.trim().isEmpty) {
       return; // User cancelled or entered empty location
     }
@@ -740,7 +914,8 @@ class _MyAppState extends State<MyApp> {
       }
 
       // Check for errors in response
-      if (response['error'] != null && response['error'].toString().isNotEmpty) {
+      if (response['error'] != null &&
+          response['error'].toString().isNotEmpty) {
         _showGlobalSnackBar('Error creating trip: ${response['error']}');
         return;
       }
@@ -756,9 +931,11 @@ class _MyAppState extends State<MyApp> {
       setState(() {
         if (_trips.isNotEmpty) {
           _activeTripIndex = _trips.length - 1;
-          _selectedTab = 3; // Switch to planner tab
+          _selectedTab = 2; // Switch to explore tab
         }
       });
+
+      await _loadExplorePlacesForLocation(_activeTrip.location);
 
       _showGlobalSnackBar('Trip created successfully!');
     } catch (e) {
@@ -775,6 +952,107 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  Future<void> _confirmDeleteTrip(Trip trip) async {
+    final BuildContext? dialogHostContext = _appNavigatorKey.currentContext;
+    if (dialogHostContext == null) {
+      return;
+    }
+
+    final bool? shouldDelete = await showDialog<bool>(
+      context: dialogHostContext,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Trip'),
+          content: Text(
+            'Are you sure you want to delete "${trip.destination}"? This cannot be undone.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB3261E),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    await _deleteTripFromDashboard(trip);
+  }
+
+  Future<void> _deleteTripFromDashboard(Trip trip) async {
+    final int? userId = _currentUserId;
+    if (userId == null) {
+      _showGlobalSnackBar('Please log in before deleting a trip.');
+      return;
+    }
+
+    if (trip.id == 'placeholder') {
+      _showGlobalSnackBar('No trip selected to delete.');
+      return;
+    }
+
+    try {
+      _showGlobalSnackBar('Deleting trip...');
+      final Map<String, dynamic> response = await deleteTrip(userId, trip.id);
+
+      if (!mounted) {
+        return;
+      }
+
+      if (response['error'] != null &&
+          response['error'].toString().isNotEmpty) {
+        _showGlobalSnackBar('Error deleting trip: ${response['error']}');
+        return;
+      }
+
+      await _fetchTripsFromBackend(userId);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        if (_trips.isEmpty) {
+          _activeTripIndex = 0;
+          return;
+        }
+
+        if (_activeTripIndex >= _trips.length) {
+          _activeTripIndex = _trips.length - 1;
+        }
+      });
+
+      if (_trips.isNotEmpty && _activeTrip.id != 'placeholder') {
+        await _loadExplorePlacesForLocation(_activeTrip.location);
+      }
+
+      _showGlobalSnackBar('Trip deleted successfully.');
+    } catch (e) {
+      final bool handled = await _handleSessionExpired(e);
+      if (handled) {
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      _showGlobalSnackBar('Failed to delete trip: $e');
+    }
+  }
+
   void _selectTripFromDashboard(Trip trip) {
     // Dashboard selection should be explicit and visible before navigating elsewhere.
     final int selectedIndex = _trips.indexWhere((Trip t) => t.id == trip.id);
@@ -785,31 +1063,195 @@ class _MyAppState extends State<MyApp> {
     setState(() {
       _activeTripIndex = selectedIndex;
     });
+
+    _loadExplorePlacesForLocation(trip.location);
+  }
+
+  List<ItineraryDay> _buildBackendItinerary(Trip trip) {
+    final List<dynamic> backendItems = trip.backendItems ?? <dynamic>[];
+    if (backendItems.isEmpty) {
+      return <ItineraryDay>[];
+    }
+
+    final List<PlannedActivity> places = <PlannedActivity>[];
+    final List<PlannedActivity> events = <PlannedActivity>[];
+    final List<PlannedActivity> travelDetails = <PlannedActivity>[];
+
+    for (int index = 0; index < backendItems.length; index++) {
+      final dynamic item = backendItems[index];
+      if (item is! Map) {
+        continue;
+      }
+
+      final String itemType = item['type']?.toString() ?? 'place';
+      final dynamic rawData = item['data'];
+      if (rawData is! Map) {
+        continue;
+      }
+
+      final Map<String, dynamic> data = Map<String, dynamic>.from(
+        rawData as Map,
+      );
+      final String title = data['name']?.toString() ?? 'Imported item';
+      final String time = _backendItemTimeLabel(itemType, data);
+      final String details = _backendItemDetailLabel(itemType, data);
+      final ActivityCategory category = _backendActivityCategory(itemType);
+
+      final PlannedActivity activity = PlannedActivity(
+        id: 'backend-$index-${itemType}-${data['placeId']?.toString() ?? title}',
+        title: title,
+        time: time,
+        category: category,
+        cost: 0,
+        details: details,
+      );
+
+      switch (itemType) {
+        case 'event':
+          events.add(activity);
+          break;
+        case 'flight':
+        case 'hotel':
+          travelDetails.add(activity);
+          break;
+        default:
+          places.add(activity);
+          break;
+      }
+    }
+
+    final List<ItineraryDay> days = <ItineraryDay>[];
+    if (places.isNotEmpty) {
+      days.add(
+        ItineraryDay(
+          id: 'backend-places',
+          label: 'Saved Places',
+          date: 'From your trip items',
+          activities: places,
+        ),
+      );
+    }
+    if (events.isNotEmpty) {
+      days.add(
+        ItineraryDay(
+          id: 'backend-events',
+          label: 'Events',
+          date: 'From your trip items',
+          activities: events,
+        ),
+      );
+    }
+    if (travelDetails.isNotEmpty) {
+      days.add(
+        ItineraryDay(
+          id: 'backend-travel',
+          label: 'Travel Details',
+          date: 'From your trip items',
+          activities: travelDetails,
+        ),
+      );
+    }
+
+    return days;
+  }
+
+  ActivityCategory _backendActivityCategory(String itemType) {
+    switch (itemType) {
+      case 'flight':
+        return ActivityCategory.flight;
+      case 'hotel':
+        return ActivityCategory.hotel;
+      case 'event':
+        return ActivityCategory.activity;
+      default:
+        return ActivityCategory.activity;
+    }
+  }
+
+  String _backendItemTimeLabel(String itemType, Map<String, dynamic> data) {
+    switch (itemType) {
+      case 'flight':
+        final String departure = data['departure_time']?.toString() ?? '';
+        final String arrival = data['arrival_time']?.toString() ?? '';
+        if (departure.isNotEmpty && arrival.isNotEmpty) {
+          return '$departure → $arrival';
+        }
+        if (departure.isNotEmpty) {
+          return departure;
+        }
+        return data['date']?.toString() ?? 'Flight';
+      case 'hotel':
+        return data['checkIn']?.toString() ??
+            data['address']?.toString() ??
+            'Hotel stay';
+      case 'event':
+        return data['date']?.toString() ?? 'Event';
+      default:
+        return data['address']?.toString() ??
+            data['type']?.toString() ??
+            'Saved place';
+    }
+  }
+
+  String _backendItemDetailLabel(String itemType, Map<String, dynamic> data) {
+    switch (itemType) {
+      case 'flight':
+        final String airline = data['airline']?.toString() ?? '';
+        final String duration = data['duration']?.toString() ?? '';
+        final List<String> parts = <String>[];
+        if (airline.isNotEmpty) parts.add(airline);
+        if (duration.isNotEmpty) parts.add(duration);
+        return parts.join(' • ');
+      case 'hotel':
+        return data['address']?.toString() ?? '';
+      case 'event':
+        final String venue = data['venue']?.toString() ?? '';
+        final String ticketUrl = data['ticketUrl']?.toString() ?? '';
+        if (venue.isNotEmpty && ticketUrl.isNotEmpty) {
+          return '$venue • Tickets available';
+        }
+        return venue.isNotEmpty ? venue : ticketUrl;
+      default:
+        final String rating = data['rating']?.toString() ?? '';
+        final String type = data['type']?.toString() ?? '';
+        final List<String> parts = <String>[];
+        if (type.isNotEmpty) parts.add(type);
+        if (rating.isNotEmpty) parts.add('Rating $rating');
+        return parts.join(' • ');
+    }
   }
 
   void _toggleActivityDone(String dayId, String activityId) {
     // Checkbox state for itinerary items in the planner and travel-mode views.
     setState(() {
-      final int dayIndex = _itinerary.indexWhere((ItineraryDay d) => d.id == dayId);
+      final int dayIndex = _itinerary.indexWhere(
+        (ItineraryDay d) => d.id == dayId,
+      );
       if (dayIndex == -1) {
         return;
       }
       final ItineraryDay day = _itinerary[dayIndex];
-      final int activityIndex =
-          day.activities.indexWhere((PlannedActivity a) => a.id == activityId);
+      final int activityIndex = day.activities.indexWhere(
+        (PlannedActivity a) => a.id == activityId,
+      );
       if (activityIndex == -1) {
         return;
       }
-      day.activities[activityIndex] =
-          day.activities[activityIndex].copyWith(done: !day.activities[activityIndex].done);
+      day.activities[activityIndex] = day.activities[activityIndex].copyWith(
+        done: !day.activities[activityIndex].done,
+      );
     });
   }
 
   Future<void> _showAddActivitySheet(String dayId) async {
     // Bottom sheet editor for adding itinerary items to a specific day.
     final TextEditingController titleController = TextEditingController();
-    final TextEditingController timeController = TextEditingController(text: '09:00');
-    final TextEditingController costController = TextEditingController(text: '0');
+    final TextEditingController timeController = TextEditingController(
+      text: '09:00',
+    );
+    final TextEditingController costController = TextEditingController(
+      text: '0',
+    );
     ActivityCategory selectedCategory = ActivityCategory.activity;
 
     await showModalBottomSheet<void>(
@@ -865,7 +1307,9 @@ class _MyAppState extends State<MyApp> {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: ActivityCategory.values.map((ActivityCategory cat) {
+                    children: ActivityCategory.values.map((
+                      ActivityCategory cat,
+                    ) {
                       final bool active = selectedCategory == cat;
                       return ChoiceChip(
                         label: Text(cat.label),
@@ -887,8 +1331,9 @@ class _MyAppState extends State<MyApp> {
                           return;
                         }
                         setState(() {
-                          final ItineraryDay day =
-                              _itinerary.firstWhere((ItineraryDay d) => d.id == dayId);
+                          final ItineraryDay day = _itinerary.firstWhere(
+                            (ItineraryDay d) => d.id == dayId,
+                          );
                           day.activities.add(
                             PlannedActivity(
                               id: 'manual-${DateTime.now().microsecondsSinceEpoch}',
@@ -897,7 +1342,9 @@ class _MyAppState extends State<MyApp> {
                                   ? '09:00'
                                   : timeController.text.trim(),
                               category: selectedCategory,
-                              cost: double.tryParse(costController.text.trim()) ?? 0,
+                              cost:
+                                  double.tryParse(costController.text.trim()) ??
+                                  0,
                             ),
                           );
                         });
@@ -946,11 +1393,7 @@ class _MyAppState extends State<MyApp> {
       debugShowCheckedModeBanner: false,
       theme: theme,
       home: _isAuthBootstrapping
-          ? const Scaffold(
-              body: Center(
-                child: CircularProgressIndicator(),
-              ),
-            )
+          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : _isLoggedIn
           ? Scaffold(
               appBar: AppBar(
@@ -991,16 +1434,10 @@ class _MyAppState extends State<MyApp> {
                       savedTrips: _savedTrips,
                       onToggleSaveTrip: _toggleSaveTrip,
                       onCreateNewTrip: _createNewTrip,
+                      onDeleteTrip: _confirmDeleteTrip,
                       onSelectTrip: _selectTripFromDashboard,
                     ),
                     ExploreScreen(
-                      query: _exploreQuery,
-                      onQueryChanged: (String value) {
-                        setState(() {
-                          _exploreQuery = value;
-                        });
-                      },
-                      onSearch: _searchExplorePlaces,
                       isLoading: _exploreLoading,
                       errorMessage: _exploreError,
                       locationLabel: _exploreLocationLabel,
@@ -1017,14 +1454,14 @@ class _MyAppState extends State<MyApp> {
                     ),
                     PlannerScreen(
                       trip: _activeTrip,
-                      itinerary: _itinerary,
+                      itinerary: _buildBackendItinerary(_activeTrip),
                       onToggleDone: _toggleActivityDone,
                       onAddActivity: _showAddActivitySheet,
                       onOpenTravelMode: () => _goToTab(4),
                     ),
                     TripDetailsScreen(
                       trip: _activeTrip,
-                      itinerary: _itinerary,
+                      itinerary: _buildBackendItinerary(_activeTrip),
                       onBackToPlanner: () => _goToTab(3),
                     ),
                   ],
@@ -1034,24 +1471,39 @@ class _MyAppState extends State<MyApp> {
                 selectedIndex: _selectedTab,
                 onDestinationSelected: _goToTab,
                 destinations: const <NavigationDestination>[
-                  NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Home'),
-                  NavigationDestination(icon: Icon(Icons.dashboard_rounded), label: 'Dashboard'),
-                  NavigationDestination(icon: Icon(Icons.travel_explore_rounded), label: 'Explore'),
-                  NavigationDestination(icon: Icon(Icons.event_note_rounded), label: 'Planner'),
-                  NavigationDestination(icon: Icon(Icons.airplanemode_active_rounded), label: 'Travel Mode'),
+                  NavigationDestination(
+                    icon: Icon(Icons.home_rounded),
+                    label: 'Home',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.dashboard_rounded),
+                    label: 'Dashboard',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.travel_explore_rounded),
+                    label: 'Explore',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.event_note_rounded),
+                    label: 'Planner',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.airplanemode_active_rounded),
+                    label: 'Travel Mode',
+                  ),
                 ],
               ),
             )
           : LoginScreen(
-            onSignIn: _signIn,
-            onRegister: _register,
-            registrationNotice: _registrationNotice,
-            onDismissRegistrationNotice: () {
-              setState(() {
-                _registrationNotice = null;
-              });
-            },
-          ),
+              onSignIn: _signIn,
+              onRegister: _register,
+              registrationNotice: _registrationNotice,
+              onDismissRegistrationNotice: () {
+                setState(() {
+                  _registrationNotice = null;
+                });
+              },
+            ),
     );
   }
 
@@ -1134,7 +1586,10 @@ class LandingScreen extends StatelessWidget {
                       ),
                       const Spacer(),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.20),
                           borderRadius: BorderRadius.circular(100),
@@ -1142,11 +1597,18 @@ class LandingScreen extends StatelessWidget {
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
-                            Icon(Icons.location_pin, size: 18, color: Color(0xFFFFD580)),
+                            Icon(
+                              Icons.location_pin,
+                              size: 18,
+                              color: Color(0xFFFFD580),
+                            ),
                             SizedBox(width: 6),
                             Text(
                               'Your digital travel agent',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
                         ),
@@ -1170,9 +1632,12 @@ class LandingScreen extends StatelessWidget {
                       TextField(
                         onChanged: onQueryChanged,
                         controller: TextEditingController(text: query)
-                          ..selection = TextSelection.collapsed(offset: query.length),
+                          ..selection = TextSelection.collapsed(
+                            offset: query.length,
+                          ),
                         decoration: InputDecoration(
-                          hintText: 'Search hiking, snorkeling, nightlife, cities...',
+                          hintText:
+                              'Search hiking, snorkeling, nightlife, cities...',
                           filled: true,
                           fillColor: Colors.white,
                           prefixIcon: const Icon(Icons.search),
@@ -1192,11 +1657,26 @@ class LandingScreen extends StatelessWidget {
                         child: ListView(
                           scrollDirection: Axis.horizontal,
                           children: <Widget>[
-                            _quickChip('Beaches', () => onQuickFilterTap('beaches')),
-                            _quickChip('Hiking', () => onQuickFilterTap('hiking')),
-                            _quickChip('Food Tours', () => onQuickFilterTap('food')),
-                            _quickChip('Nightlife', () => onQuickFilterTap('nightlife')),
-                            _quickChip('Museums', () => onQuickFilterTap('museums')),
+                            _quickChip(
+                              'Beaches',
+                              () => onQuickFilterTap('beaches'),
+                            ),
+                            _quickChip(
+                              'Hiking',
+                              () => onQuickFilterTap('hiking'),
+                            ),
+                            _quickChip(
+                              'Food Tours',
+                              () => onQuickFilterTap('food'),
+                            ),
+                            _quickChip(
+                              'Nightlife',
+                              () => onQuickFilterTap('nightlife'),
+                            ),
+                            _quickChip(
+                              'Museums',
+                              () => onQuickFilterTap('museums'),
+                            ),
                           ],
                         ),
                       ),
@@ -1249,7 +1729,11 @@ class LandingScreen extends StatelessWidget {
               children: <Widget>[
                 const Text(
                   'Travel smarter, not harder',
-                  style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: _deepBlue),
+                  style: TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w800,
+                    color: _deepBlue,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 const Text(
@@ -1260,7 +1744,8 @@ class LandingScreen extends StatelessWidget {
                 _featureCard(
                   icon: Icons.airplanemode_active_rounded,
                   title: 'All-in-One Planner',
-                  description: 'Flights, hotels, and activities in one timeline.',
+                  description:
+                      'Flights, hotels, and activities in one timeline.',
                   color: _oceanBlue,
                 ),
                 const SizedBox(height: 10),
@@ -1274,7 +1759,8 @@ class LandingScreen extends StatelessWidget {
                 _featureCard(
                   icon: Icons.verified_user_rounded,
                   title: 'Travel With Confidence',
-                  description: 'Reservation details and travel essentials at your fingertips.',
+                  description:
+                      'Reservation details and travel essentials at your fingertips.',
                   color: const Color(0xFF5B8A5E),
                 ),
               ],
@@ -1342,9 +1828,15 @@ class LandingScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 2),
-                Text(description, style: const TextStyle(color: Colors.black54)),
+                Text(
+                  description,
+                  style: const TextStyle(color: Colors.black54),
+                ),
               ],
             ),
           ),
@@ -1365,7 +1857,14 @@ class LoginScreen extends StatefulWidget {
   });
 
   final Function(String username, String password) onSignIn;
-  final Function(String firstName, String lastName, String login, String email, String password)? onRegister;
+  final Function(
+    String firstName,
+    String lastName,
+    String login,
+    String email,
+    String password,
+  )?
+  onRegister;
   final String? registrationNotice;
   final VoidCallback? onDismissRegistrationNotice;
 
@@ -1382,8 +1881,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final TextEditingController firstNameController = TextEditingController();
     final TextEditingController lastNameController = TextEditingController();
     final TextEditingController loginController = TextEditingController();
-    final TextEditingController registerEmailController = TextEditingController();
-    final TextEditingController registerPasswordController = TextEditingController();
+    final TextEditingController registerEmailController =
+        TextEditingController();
+    final TextEditingController registerPasswordController =
+        TextEditingController();
 
     showDialog(
       context: context,
@@ -1396,23 +1897,35 @@ class _LoginScreenState extends State<LoginScreen> {
               children: <Widget>[
                 TextField(
                   controller: firstNameController,
-                  decoration: const InputDecoration(labelText: 'First Name', hintText: 'John'),
+                  decoration: const InputDecoration(
+                    labelText: 'First Name',
+                    hintText: 'John',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: lastNameController,
-                  decoration: const InputDecoration(labelText: 'Last Name', hintText: 'Doe'),
+                  decoration: const InputDecoration(
+                    labelText: 'Last Name',
+                    hintText: 'Doe',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: loginController,
-                  decoration: const InputDecoration(labelText: 'Username', hintText: 'johndoe'),
+                  decoration: const InputDecoration(
+                    labelText: 'Username',
+                    hintText: 'johndoe',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: registerEmailController,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email', hintText: 'john@example.com'),
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    hintText: 'john@example.com',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -1473,7 +1986,11 @@ class _LoginScreenState extends State<LoginScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: <Color>[Color(0xFFF9F6F1), Color(0xFFF0E9DD), Color(0xFFE7F5F7)],
+            colors: <Color>[
+              Color(0xFFF9F6F1),
+              Color(0xFFF0E9DD),
+              Color(0xFFE7F5F7),
+            ],
           ),
         ),
         child: SafeArea(
@@ -1509,14 +2026,19 @@ class _LoginScreenState extends State<LoginScreen> {
                             decoration: BoxDecoration(
                               color: const Color(0xFFEAF7EE),
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFFBFE3C8)),
+                              border: Border.all(
+                                color: const Color(0xFFBFE3C8),
+                              ),
                             ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
                                 const Padding(
                                   padding: EdgeInsets.only(top: 2),
-                                  child: Icon(Icons.mark_email_unread_outlined, color: Color(0xFF1E7A3E)),
+                                  child: Icon(
+                                    Icons.mark_email_unread_outlined,
+                                    color: Color(0xFF1E7A3E),
+                                  ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
@@ -1531,10 +2053,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 IconButton(
                                   padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
                                   visualDensity: VisualDensity.compact,
                                   onPressed: widget.onDismissRegistrationNotice,
-                                  icon: const Icon(Icons.close, size: 18, color: Color(0xFF1E7A3E)),
+                                  icon: const Icon(
+                                    Icons.close,
+                                    size: 18,
+                                    color: Color(0xFF1E7A3E),
+                                  ),
                                 ),
                               ],
                             ),
@@ -1545,15 +2074,25 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: 56,
                           height: 56,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF2196A6).withValues(alpha: 0.14),
+                            color: const Color(
+                              0xFF2196A6,
+                            ).withValues(alpha: 0.14),
                             borderRadius: BorderRadius.circular(18),
                           ),
-                          child: const Icon(Icons.explore_rounded, color: Color(0xFF2196A6), size: 30),
+                          child: const Icon(
+                            Icons.explore_rounded,
+                            color: Color(0xFF2196A6),
+                            size: 30,
+                          ),
                         ),
                         const SizedBox(height: 18),
                         const Text(
                           'Welcome back',
-                          style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFF1A2B3C)),
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF1A2B3C),
+                          ),
                         ),
                         const SizedBox(height: 8),
                         const Text(
@@ -1567,7 +2106,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           decoration: InputDecoration(
                             labelText: 'Username',
                             hintText: 'johndoe',
-                            prefixIcon: const Icon(Icons.person_outline_rounded),
+                            prefixIcon: const Icon(
+                              Icons.person_outline_rounded,
+                            ),
                             filled: true,
                             fillColor: const Color(0xFFF7F3EC),
                             border: OutlineInputBorder(
@@ -1603,7 +2144,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               },
                             ),
                             const Expanded(
-                              child: Text('Remember me', style: TextStyle(color: Colors.black87)),
+                              child: Text(
+                                'Remember me',
+                                style: TextStyle(color: Colors.black87),
+                              ),
                             ),
                             TextButton(
                               onPressed: () {},
@@ -1616,7 +2160,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: double.infinity,
                           child: FilledButton(
                             onPressed: () {
-                              widget.onSignIn(_usernameController.text, _passwordController.text);
+                              widget.onSignIn(
+                                _usernameController.text,
+                                _passwordController.text,
+                              );
                             },
                             style: FilledButton.styleFrom(
                               backgroundColor: const Color(0xFF2196A6),
@@ -1682,6 +2229,7 @@ class DashboardScreen extends StatelessWidget {
     required this.savedTrips,
     required this.onToggleSaveTrip,
     required this.onCreateNewTrip,
+    required this.onDeleteTrip,
     required this.onSelectTrip,
   });
 
@@ -1690,6 +2238,7 @@ class DashboardScreen extends StatelessWidget {
   final Set<String> savedTrips;
   final ValueChanged<String> onToggleSaveTrip;
   final VoidCallback onCreateNewTrip;
+  final ValueChanged<Trip> onDeleteTrip;
   final ValueChanged<Trip> onSelectTrip;
 
   @override
@@ -1706,7 +2255,11 @@ class DashboardScreen extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     'Your Dashboard',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFF1A2B3C)),
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF1A2B3C),
+                    ),
                   ),
                   SizedBox(height: 4),
                   Text(
@@ -1732,9 +2285,21 @@ class DashboardScreen extends StatelessWidget {
           spacing: 10,
           runSpacing: 10,
           children: const <Widget>[
-            _StatCard(label: 'Trips Taken', value: '24', icon: Icons.airplanemode_active_rounded),
-            _StatCard(label: 'Countries', value: '12', icon: Icons.public_rounded),
-            _StatCard(label: 'Saved Places', value: '38', icon: Icons.favorite_rounded),
+            _StatCard(
+              label: 'Trips Taken',
+              value: '24',
+              icon: Icons.airplanemode_active_rounded,
+            ),
+            _StatCard(
+              label: 'Countries',
+              value: '12',
+              icon: Icons.public_rounded,
+            ),
+            _StatCard(
+              label: 'Saved Places',
+              value: '38',
+              icon: Icons.favorite_rounded,
+            ),
           ],
         ),
         const SizedBox(height: 14),
@@ -1747,14 +2312,18 @@ class DashboardScreen extends StatelessWidget {
               color: Colors.white,
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
-                color: isActive ? const Color(0xFF2196A6) : const Color(0xFFE8E0D5),
+                color: isActive
+                    ? const Color(0xFF2196A6)
+                    : const Color(0xFFE8E0D5),
                 width: isActive ? 2 : 1,
               ),
             ),
             child: Column(
               children: <Widget>[
                 ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(22),
+                  ),
                   child: Stack(
                     children: <Widget>[
                       TravelImage(
@@ -1768,7 +2337,24 @@ class DashboardScreen extends StatelessWidget {
                         right: 10,
                         child: IconButton.filledTonal(
                           onPressed: () => onToggleSaveTrip(trip.id),
-                          icon: Icon(saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded),
+                          icon: Icon(
+                            saved
+                                ? Icons.bookmark_rounded
+                                : Icons.bookmark_border_rounded,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 10,
+                        left: 10,
+                        child: IconButton.filled(
+                          onPressed: () => onDeleteTrip(trip),
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFFB3261E),
+                            foregroundColor: Colors.white,
+                          ),
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          tooltip: 'Delete trip',
                         ),
                       ),
                     ],
@@ -1776,7 +2362,10 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 ListTile(
                   onTap: () => onSelectTrip(trip),
-                  title: Text(trip.destination, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  title: Text(
+                    trip.destination,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   subtitle: Text('${trip.location}\n${trip.dates}'),
                   isThreeLine: true,
                   trailing: AnimatedContainer(
@@ -1784,13 +2373,22 @@ class DashboardScreen extends StatelessWidget {
                     child: FilledButton.icon(
                       onPressed: () => onSelectTrip(trip),
                       style: FilledButton.styleFrom(
-                        backgroundColor: isActive ? const Color(0xFF2196A6) : const Color(0xFFF4845F),
+                        backgroundColor: isActive
+                            ? const Color(0xFF2196A6)
+                            : const Color(0xFFF4845F),
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(isActive ? 999 : 12),
+                          borderRadius: BorderRadius.circular(
+                            isActive ? 999 : 12,
+                          ),
                         ),
                       ),
-                      icon: Icon(isActive ? Icons.check_circle_rounded : Icons.trip_origin_rounded, size: 18),
+                      icon: Icon(
+                        isActive
+                            ? Icons.check_circle_rounded
+                            : Icons.trip_origin_rounded,
+                        size: 18,
+                      ),
                       label: Text(isActive ? 'Selected' : 'Select'),
                     ),
                   ),
@@ -1805,7 +2403,9 @@ class DashboardScreen extends StatelessWidget {
           label: const Text('Create New Trip'),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size(double.infinity, 52),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
           ),
         ),
       ],
@@ -1813,13 +2413,10 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-// Destination discovery with search, filters, and add-to-trip actions.
+// Destination discovery with filters and add-to-trip actions.
 class ExploreScreen extends StatelessWidget {
   const ExploreScreen({
     super.key,
-    required this.query,
-    required this.onQueryChanged,
-    required this.onSearch,
     required this.isLoading,
     required this.errorMessage,
     required this.locationLabel,
@@ -1831,9 +2428,6 @@ class ExploreScreen extends StatelessWidget {
     required this.onToggleAddDestination,
   });
 
-  final String query;
-  final ValueChanged<String> onQueryChanged;
-  final VoidCallback onSearch;
   final bool isLoading;
   final String? errorMessage;
   final String? locationLabel;
@@ -1846,15 +2440,11 @@ class ExploreScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<ExplorePlaceResult> filtered = places.where((ExplorePlaceResult place) {
-      final String q = query.trim().toLowerCase();
-      final bool matchesQuery = q.isEmpty ||
-          place.name.toLowerCase().contains(q) ||
-          place.location.toLowerCase().contains(q) ||
-          place.type.toLowerCase().contains(q);
-      final bool matchesFilter = selectedFilters.isEmpty ||
+    final List<ExplorePlaceResult> filtered = places.where((
+      ExplorePlaceResult place,
+    ) {
+      return selectedFilters.isEmpty ||
           selectedFilters.any((String filter) => _matchesFilter(place, filter));
-      return matchesQuery && matchesFilter;
     }).toList();
 
     return ListView(
@@ -1862,48 +2452,13 @@ class ExploreScreen extends StatelessWidget {
       children: <Widget>[
         const Text(
           'Explore',
-          style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFF1A2B3C)),
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF1A2B3C),
+          ),
         ),
         const SizedBox(height: 4),
-        const Text('Search a city to load live nearby places from the API.'),
-        const SizedBox(height: 12),
-        TextField(
-          onChanged: onQueryChanged,
-          onSubmitted: (_) => onSearch(),
-          controller: TextEditingController(text: query)
-            ..selection = TextSelection.collapsed(offset: query.length),
-          decoration: InputDecoration(
-            hintText: 'Search a city, country, or region...',
-            prefixIcon: const Icon(Icons.search_rounded),
-            suffixIcon: IconButton(
-              onPressed: onSearch,
-              icon: const Icon(Icons.travel_explore_rounded),
-              tooltip: 'Search location',
-            ),
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderSide: BorderSide.none,
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: isLoading ? null : onSearch,
-            icon: isLoading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.travel_explore_rounded),
-            label: Text(isLoading ? 'Searching...' : 'Search Live Places'),
-          ),
-        ),
-        const SizedBox(height: 12),
         SizedBox(
           height: 42,
           child: ListView(
@@ -1927,13 +2482,19 @@ class ExploreScreen extends StatelessWidget {
         if (locationLabel != null) ...<Widget>[
           Text(
             'Showing live places near $locationLabel',
-            style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.black54),
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Colors.black54,
+            ),
           ),
           const SizedBox(height: 6),
         ] else
           const Text(
-            'Search a city to load live places.',
-            style: TextStyle(fontWeight: FontWeight.w700, color: Colors.black54),
+            'Create or select a trip to load live places.',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Colors.black54,
+            ),
           ),
         const SizedBox(height: 10),
         if (errorMessage != null) ...<Widget>[
@@ -1960,7 +2521,7 @@ class ExploreScreen extends StatelessWidget {
               border: Border.all(color: const Color(0xFFE8E0D5)),
             ),
             child: const Text(
-              'No places loaded yet. Search for a city to see live results.',
+              'No places loaded yet. Select a trip location to see live results.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.black54, height: 1.4),
             ),
@@ -1978,7 +2539,9 @@ class ExploreScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(22),
+                  ),
                   child: place.image.isNotEmpty
                       ? TravelImage(
                           place.image,
@@ -1991,7 +2554,11 @@ class ExploreScreen extends StatelessWidget {
                           width: double.infinity,
                           color: const Color(0xFFEFE7DA),
                           alignment: Alignment.center,
-                          child: const Icon(Icons.place_rounded, color: Color(0xFF9BA3AD), size: 40),
+                          child: const Icon(
+                            Icons.place_rounded,
+                            color: Color(0xFF9BA3AD),
+                            size: 40,
+                          ),
                         ),
                 ),
                 Padding(
@@ -2004,7 +2571,10 @@ class ExploreScreen extends StatelessWidget {
                           Expanded(
                             child: Text(
                               place.name,
-                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 17,
+                              ),
                             ),
                           ),
                           if (place.rating != null)
@@ -2018,7 +2588,10 @@ class ExploreScreen extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(place.location, style: const TextStyle(color: Colors.black54)),
+                      Text(
+                        place.location,
+                        style: const TextStyle(color: Colors.black54),
+                      ),
                       const SizedBox(height: 8),
                       Text(
                         place.type,
@@ -2030,11 +2603,14 @@ class ExploreScreen extends StatelessWidget {
                         child: FilledButton.icon(
                           onPressed: () => onToggleAddDestination(place),
                           style: FilledButton.styleFrom(
-                            backgroundColor:
-                                added ? const Color(0xFF5B8A5E) : const Color(0xFF2196A6),
+                            backgroundColor: added
+                                ? const Color(0xFF5B8A5E)
+                                : const Color(0xFF2196A6),
                             foregroundColor: Colors.white,
                           ),
-                          icon: Icon(added ? Icons.check_rounded : Icons.add_rounded),
+                          icon: Icon(
+                            added ? Icons.check_rounded : Icons.add_rounded,
+                          ),
                           label: Text(added ? 'Added to Trip' : 'Add to Trip'),
                         ),
                       ),
@@ -2081,20 +2657,31 @@ class ExploreScreen extends StatelessWidget {
   }
 
   bool _matchesFilter(ExplorePlaceResult place, String filter) {
-    final String haystack = '${place.name} ${place.location} ${place.type}'.toLowerCase();
+    final String haystack = '${place.name} ${place.location} ${place.type}'
+        .toLowerCase();
     switch (filter) {
       case 'beaches':
-        return haystack.contains('beach') || haystack.contains('coast') || haystack.contains('water');
+        return haystack.contains('beach') ||
+            haystack.contains('coast') ||
+            haystack.contains('water');
       case 'hiking':
-        return haystack.contains('park') || haystack.contains('trail') || haystack.contains('hiking');
+        return haystack.contains('park') ||
+            haystack.contains('trail') ||
+            haystack.contains('hiking');
       case 'food':
-        return haystack.contains('restaurant') || haystack.contains('cafe') || haystack.contains('food');
+        return haystack.contains('restaurant') ||
+            haystack.contains('cafe') ||
+            haystack.contains('food');
       case 'nightlife':
-        return haystack.contains('bar') || haystack.contains('nightlife') || haystack.contains('club');
+        return haystack.contains('bar') ||
+            haystack.contains('nightlife') ||
+            haystack.contains('club');
       case 'museums':
         return haystack.contains('museum') || haystack.contains('gallery');
       case 'snorkeling':
-        return haystack.contains('snorkel') || haystack.contains('aquarium') || haystack.contains('tourist');
+        return haystack.contains('snorkel') ||
+            haystack.contains('aquarium') ||
+            haystack.contains('tourist');
       default:
         return haystack.contains(filter.toLowerCase());
     }
@@ -2123,9 +2710,17 @@ class PlannerScreen extends StatelessWidget {
     // The planner combines the itinerary editor and budget summary for the active trip.
     final double total = itinerary
         .expand((ItineraryDay day) => day.activities)
-        .fold<double>(0, (double sum, PlannedActivity activity) => sum + activity.cost);
+        .fold<double>(
+          0,
+          (double sum, PlannedActivity activity) => sum + activity.cost,
+        );
     final double budgetLimit = trip.estimatedBudget;
-    final double progress = budgetLimit == 0 ? 0 : (total / budgetLimit).clamp(0, 1);
+    final double progress = budgetLimit == 0
+        ? 0
+        : (total / budgetLimit).clamp(0, 1);
+    final bool hasItems = itinerary.any(
+      (ItineraryDay day) => day.activities.isNotEmpty,
+    );
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -2149,8 +2744,13 @@ class PlannerScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const Text('Trip Planner',
-                        style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+                    const Text(
+                      'Trip Planner',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(height: 6),
                     Text(
                       trip.destination,
@@ -2192,8 +2792,10 @@ class PlannerScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const Text('Budget Tracker',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              const Text(
+                'Budget Tracker',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
               const SizedBox(height: 6),
               Text('Estimated: \$${trip.estimatedBudget.toStringAsFixed(0)}'),
               Text('Planned spend: \$${total.toStringAsFixed(0)}'),
@@ -2209,53 +2811,86 @@ class PlannerScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        const Text('Itinerary Builder',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF1A2B3C))),
+        const Text(
+          'Itinerary Builder',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF1A2B3C),
+          ),
+        ),
         const SizedBox(height: 8),
-        ...itinerary.map((ItineraryDay day) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
+        if (!hasItems)
+          Container(
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: const Color(0xFFE8E0D5)),
             ),
-            child: ExpansionTile(
-              tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              title: Text(day.label, style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(day.date),
-              childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-              children: <Widget>[
-                ...day.activities.map((PlannedActivity activity) {
-                  return ListTile(
-                    dense: true,
-                    leading: Checkbox(
-                      value: activity.done,
-                      onChanged: (_) => onToggleDone(day.id, activity.id),
-                    ),
-                    title: Text(activity.title),
-                    subtitle: Text('${activity.time} | ${activity.category.label}'),
-                    trailing: Text(
-                      activity.cost == 0
-                          ? 'Free'
-                          : '\$${activity.cost.toStringAsFixed(0)}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  );
-                }),
-                const SizedBox(height: 4),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => onAddActivity(day.id),
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Add Activity to Day'),
-                  ),
-                ),
-              ],
+            child: const Text(
+              'This trip has no saved backend items yet. Add places or events from Explore to build the itinerary.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.black54, height: 1.4),
             ),
-          );
-        }),
+          )
+        else
+          ...itinerary.map((ItineraryDay day) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFE8E0D5)),
+              ),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
+                title: Text(
+                  day.label,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(day.date),
+                childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                children: <Widget>[
+                  ...day.activities.map((PlannedActivity activity) {
+                    return ListTile(
+                      dense: true,
+                      leading: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: activity.category.color.withValues(
+                            alpha: 0.12,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          activity.category.icon,
+                          color: activity.category.color,
+                          size: 18,
+                        ),
+                      ),
+                      title: Text(activity.title),
+                      subtitle: Text(
+                        activity.details.isNotEmpty
+                            ? '${activity.time} • ${activity.details}'
+                            : activity.time,
+                      ),
+                      trailing: Text(
+                        activity.cost == 0
+                            ? 'Saved'
+                            : '\$${activity.cost.toStringAsFixed(0)}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            );
+          }),
       ],
     );
   }
@@ -2281,7 +2916,10 @@ class TripDetailsScreen extends StatefulWidget {
 class _TripDetailsScreenState extends State<TripDetailsScreen>
     with SingleTickerProviderStateMixin {
   // Tab controller keeps travel details grouped into logical sections.
-  late final TabController _tabController = TabController(length: 4, vsync: this);
+  late final TabController _tabController = TabController(
+    length: 4,
+    vsync: this,
+  );
 
   @override
   void dispose() {
@@ -2377,34 +3015,68 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
     // Compact view of the active trip schedule for travel mode.
     return ListView(
       padding: const EdgeInsets.all(14),
-      children: <Widget>[
-        ...widget.itinerary.map((ItineraryDay day) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE8E0D5)),
-            ),
-            child: ExpansionTile(
-              title: Text(day.label),
-              subtitle: Text(day.date),
-              children: day.activities
-                  .map((PlannedActivity activity) => ListTile(
-                        leading: Icon(activity.category.icon, color: activity.category.color),
-                        title: Text(activity.title),
-                        subtitle: Text(activity.time),
-                        trailing: Text(
-                          activity.cost == 0
-                              ? 'Free'
-                              : '\$${activity.cost.toStringAsFixed(0)}',
+      children: widget.itinerary.isEmpty
+          ? <Widget>[
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFE8E0D5)),
+                ),
+                child: const Text(
+                  'No backend items have been saved for this trip yet.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black54, height: 1.4),
+                ),
+              ),
+            ]
+          : widget.itinerary.map((ItineraryDay day) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE8E0D5)),
+                ),
+                child: ExpansionTile(
+                  title: Text(day.label),
+                  subtitle: Text(day.date),
+                  children: day.activities
+                      .map(
+                        (PlannedActivity activity) => ListTile(
+                          leading: Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: activity.category.color.withValues(
+                                alpha: 0.12,
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              activity.category.icon,
+                              color: activity.category.color,
+                              size: 18,
+                            ),
+                          ),
+                          title: Text(activity.title),
+                          subtitle: Text(
+                            activity.details.isNotEmpty
+                                ? '${activity.time} • ${activity.details}'
+                                : activity.time,
+                          ),
+                          trailing: Text(
+                            activity.cost == 0
+                                ? 'Saved'
+                                : '\$${activity.cost.toStringAsFixed(0)}',
+                          ),
                         ),
-                      ))
-                  .toList(),
-            ),
-          );
-        }),
-      ],
+                      )
+                      .toList(),
+                ),
+              );
+            }).toList(),
     );
   }
 
@@ -2433,12 +3105,19 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
     return ListView(
       padding: const EdgeInsets.all(14),
       children: widget.trip.reservations
-          .map((String reservation) => ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                tileColor: Colors.white,
-                leading: const Icon(Icons.check_circle_rounded, color: Color(0xFF5B8A5E)),
-                title: Text(reservation),
-              ))
+          .map(
+            (String reservation) => ListTile(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              tileColor: Colors.white,
+              leading: const Icon(
+                Icons.check_circle_rounded,
+                color: Color(0xFF5B8A5E),
+              ),
+              title: Text(reservation),
+            ),
+          )
           .toList(),
     );
   }
@@ -2498,7 +3177,10 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 2),
                 Text(content, style: const TextStyle(color: Colors.black54)),
               ],
@@ -2538,8 +3220,14 @@ class _StatCard extends StatelessWidget {
         children: <Widget>[
           Icon(icon, color: const Color(0xFF2196A6)),
           const SizedBox(height: 6),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-          Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+          ),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
         ],
       ),
     );
@@ -2631,6 +3319,7 @@ class PlannedActivity {
     required this.category,
     required this.cost,
     this.done = false,
+    this.details = '',
   });
 
   final String id;
@@ -2639,6 +3328,7 @@ class PlannedActivity {
   final ActivityCategory category;
   final double cost;
   final bool done;
+  final String details;
 
   PlannedActivity copyWith({
     String? id,
@@ -2647,6 +3337,7 @@ class PlannedActivity {
     ActivityCategory? category,
     double? cost,
     bool? done,
+    String? details,
   }) {
     return PlannedActivity(
       id: id ?? this.id,
@@ -2655,6 +3346,7 @@ class PlannedActivity {
       category: category ?? this.category,
       cost: cost ?? this.cost,
       done: done ?? this.done,
+      details: details ?? this.details,
     );
   }
 }
@@ -2696,15 +3388,19 @@ class TravelImage extends StatelessWidget {
       fit: fit,
       height: height,
       width: width,
-      errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-        return Container(
-          height: height,
-          width: width,
-          color: const Color(0xFFECE4DA),
-          alignment: Alignment.center,
-          child: const Icon(Icons.landscape_rounded, color: Color(0xFF9BA3AD)),
-        );
-      },
+      errorBuilder:
+          (BuildContext context, Object error, StackTrace? stackTrace) {
+            return Container(
+              height: height,
+              width: width,
+              color: const Color(0xFFECE4DA),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.landscape_rounded,
+                color: Color(0xFF9BA3AD),
+              ),
+            );
+          },
     );
   }
 }
