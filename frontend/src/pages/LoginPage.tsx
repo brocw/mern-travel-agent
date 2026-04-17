@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import Login from "../components/Login";
 // import triptasticLogo from "../assets/triptastic-logo.png";
 import heroBg from "../assets/hero-bg.png";
@@ -49,14 +48,8 @@ const features = [
 
 const LoginPage = () => {
   const [showLogin, setShowLogin] = useState(false);
-  const navigate = useNavigate();
 
-  useEffect(() => {
-    const userData = localStorage.getItem('user_data');
-    if (userData) {
-      navigate('/search');
-    }
-  }, [navigate]);
+  const isLoggedIn = !!localStorage.getItem('user_data');
   return (
     <div className="th-landing">
       {/* ── Navbar ── */}
@@ -70,9 +63,13 @@ const LoginPage = () => {
         <div className="th-landing-nav-links">
           <a href="/search" className="th-landing-nav-link">Explore</a>
           <a href="/trips" className="th-landing-nav-link">My Trips</a>
-          <button className="th-landing-nav-signin" onClick={() => setShowLogin(true)}>
-            Sign In
-          </button>
+          {isLoggedIn ? (
+            <a href="/search" className="th-landing-nav-signin">Explore →</a>
+          ) : (
+            <button className="th-landing-nav-signin" onClick={() => setShowLogin(true)}>
+              Sign In
+            </button>
+          )}
         </div>
       </header>
 
