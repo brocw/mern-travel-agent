@@ -23,7 +23,7 @@ class _MyAppState extends State<MyApp> {
   // Local auth gate for switching between the login screen and the app shell.
   bool _isLoggedIn = false;
   bool _isAuthBootstrapping = true;
-  String? _currentUserId;
+  int? _currentUserId;
   String? _registrationNotice;
 
   @override
@@ -35,7 +35,8 @@ class _MyAppState extends State<MyApp> {
   Future<void> _bootstrapAuthState() async {
     try {
       final String? token = await getToken();
-      final String? userId = await getCurrentUserId();
+      final String? userIdValue = await getCurrentUserId();
+      final int? userId = userIdValue == null ? null : int.tryParse(userIdValue);
       if (!mounted) {
         return;
       }
@@ -43,9 +44,18 @@ class _MyAppState extends State<MyApp> {
       setState(() {
         _currentUserId = userId;
         _isLoggedIn =
-            token != null && token.isNotEmpty && userId != null && userId.isNotEmpty;
+            token != null && token.isNotEmpty && userId != null;
         _isAuthBootstrapping = false;
+        if (!_isLoggedIn) {
+          _trips.clear();
+          _activeTripIndex = 0;
+        }
       });
+
+      // Fetch trips from backend if user is logged in
+      if (_isLoggedIn && userId != null) {
+        await _fetchTripsFromBackend(userId);
+      }
     } catch (_) {
       if (!mounted) {
         return;
@@ -55,7 +65,106 @@ class _MyAppState extends State<MyApp> {
         _isLoggedIn = false;
         _currentUserId = null;
         _isAuthBootstrapping = false;
+        _trips.clear();
+        _activeTripIndex = 0;
       });
+    }
+  }
+
+  Future<void> _fetchTripsFromBackend(int userId) async {
+    try {
+      final response = await getTrips(userId);
+      if (!mounted) {
+        return;
+      }
+
+      // Check for errors in the response
+      if (response['error'] != null && response['error'].toString().isNotEmpty) {
+        print('Error fetching trips: ${response['error']}');
+        return;
+      }
+
+      // Parse trips array from response
+      final List<dynamic> tripsData = response['trips'] ?? [];
+      final List<Trip> fetchedTrips = <Trip>[];
+
+      for (final tripData in tripsData) {
+        try {
+          // Web app stores trip items as Items[].{ type, data }, where data has name/address/etc.
+          final List<dynamic> items =
+              tripData['Items'] is List ? tripData['Items'] as List<dynamic> : <dynamic>[];
+          final List<String> itemNames = <String>[];
+          String imageUrl =
+              'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80';
+          String flightInfo = '';
+          String hotelAddress = '';
+
+          for (final dynamic item in items) {
+            if (item is! Map) {
+              continue;
+            }
+
+            final String itemType = item['type']?.toString() ?? '';
+            final dynamic data = item['data'];
+            if (data is! Map) {
+              continue;
+            }
+
+            final String? name = data['name']?.toString();
+            if (name != null && name.isNotEmpty) {
+              itemNames.add(name);
+            }
+
+            if ((data['image']?.toString().isNotEmpty ?? false) &&
+                imageUrl.contains('unsplash.com/photo-1507525428034-b723cf961d3e')) {
+              imageUrl = data['image'].toString();
+            }
+
+            if (itemType == 'flight' && flightInfo.isEmpty && name != null && name.isNotEmpty) {
+              flightInfo = name;
+            }
+
+            if (itemType == 'hotel' && hotelAddress.isEmpty) {
+              final String? address = data['address']?.toString();
+              if (address != null && address.isNotEmpty) {
+                hotelAddress = address;
+              }
+            }
+          }
+
+          String formattedDates = 'No dates set';
+          final String? createdAt = tripData['CreatedAt']?.toString();
+          if (createdAt != null && createdAt.isNotEmpty) {
+            formattedDates = createdAt.contains('T')
+                ? 'Created: ${createdAt.split('T').first}'
+                : 'Created: $createdAt';
+          }
+
+          final Trip trip = Trip(
+            id: tripData['_id']?.toString() ?? 'unknown',
+            destination: tripData['Location']?.toString() ?? 'Unknown Destination',
+            location: tripData['Location']?.toString() ?? 'Unknown Location',
+            dates: formattedDates,
+            image: imageUrl,
+            estimatedBudget: 0.0,
+            flightInfo: flightInfo,
+            hotelAddress: hotelAddress,
+            reservations: itemNames.isNotEmpty ? itemNames : <String>['No items added yet'],
+            backendItems: items,
+          );
+          fetchedTrips.add(trip);
+        } catch (e) {
+          print('Error parsing trip: $e');
+        }
+      }
+
+      setState(() {
+        _trips.clear();
+        _trips.addAll(fetchedTrips);
+      });
+      print('Loaded ${fetchedTrips.length} trips from backend');
+    } catch (e) {
+      print('Exception fetching trips: $e');
     }
   }
 
@@ -74,54 +183,8 @@ class _MyAppState extends State<MyApp> {
   final Set<String> _savedTrips = <String>{'trip-1', 'trip-3'};
   final Set<String> _addedDestinationIds = <String>{};
 
-  final List<Trip> _trips = <Trip>[
-    Trip(
-      id: 'trip-1',
-      destination: 'Maldives',
-      location: 'Baa Atoll, Maldives',
-      dates: 'Mar 15 - Mar 24, 2026',
-      image:
-          'https://images.unsplash.com/photo-1622779536320-bb5f5b501a06?auto=format&fit=crop&w=1200&q=80',
-      estimatedBudget: 3200,
-      flightInfo: 'Emirates EK 202 | JFK -> MLE | 08:00',
-      hotelAddress: 'Soneva Fushi Resort, Kunfunadhoo Island, Baa Atoll',
-      reservations: const <String>[
-        'Hotel confirmation: SF-20260315-4891',
-        'Dinner cruise booking: CR-45890',
-        'Speedboat transfer reserved',
-      ],
-    ),
-    Trip(
-      id: 'trip-2',
-      destination: 'Tokyo',
-      location: 'Tokyo, Japan',
-      dates: 'Apr 02 - Apr 12, 2026',
-      image:
-          'https://images.unsplash.com/photo-1724063781332-0221499bd113?auto=format&fit=crop&w=1200&q=80',
-      estimatedBudget: 2800,
-      flightInfo: 'Japan Airlines JL5 | LAX -> HND | 09:45',
-      hotelAddress: 'Shinjuku Granbell Hotel, 2-14-5 Kabukicho, Tokyo',
-      reservations: const <String>[
-        'Hotel confirmation: SGH-22044',
-        'Shibuya food tour: FT-9920',
-      ],
-    ),
-    Trip(
-      id: 'trip-3',
-      destination: 'Santorini',
-      location: 'Santorini, Greece',
-      dates: 'Jun 08 - Jun 16, 2026',
-      image:
-          'https://images.unsplash.com/photo-1633909198480-85595aa21285?auto=format&fit=crop&w=1200&q=80',
-      estimatedBudget: 3450,
-      flightInfo: 'Aegean A381 | ATH -> JTR | 12:20',
-      hotelAddress: 'Andronis Boutique, Oia, Santorini',
-      reservations: const <String>[
-        'Hotel confirmation: AD-88321',
-        'Catamaran sunset cruise: CS-32109',
-      ],
-    ),
-  ];
+  // Trips are now loaded from backend via _fetchTripsFromBackend()
+  final List<Trip> _trips = <Trip>[];
 
   final List<ItineraryDay> _itinerary = <ItineraryDay>[
     ItineraryDay(
@@ -190,6 +253,20 @@ class _MyAppState extends State<MyApp> {
   ];
 
   Trip get _activeTrip {
+    // Return a placeholder trip if no trips exist yet
+    if (_trips.isEmpty) {
+      return Trip(
+        id: 'placeholder',
+        destination: 'No Trip Selected',
+        location: 'Create a trip to get started',
+        dates: 'No dates',
+        image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+        estimatedBudget: 0,
+        flightInfo: '',
+        hotelAddress: '',
+        reservations: const <String>[],
+      );
+    }
     // Fallback to the first trip so the planner/details screens always have content.
     if (_activeTripIndex < 0 || _activeTripIndex >= _trips.length) {
       return _trips.first;
@@ -247,8 +324,9 @@ class _MyAppState extends State<MyApp> {
       }
 
       await saveToken(token);
-      final String? userId = await getCurrentUserId();
-      if (userId == null || userId.isEmpty) {
+      final String? userIdValue = await getCurrentUserId();
+      final int? userId = userIdValue == null ? null : int.tryParse(userIdValue);
+      if (userId == null) {
         throw Exception('Token did not include a valid user identity.');
       }
       if (!mounted) return;
@@ -258,7 +336,11 @@ class _MyAppState extends State<MyApp> {
         _isLoggedIn = true;
         _registrationNotice = null;
         _selectedTab = 0;
+        _trips.clear();
+        _activeTripIndex = 0;
       });
+
+      await _fetchTripsFromBackend(userId);
     }
     catch (e) {
       debugPrint('Sign in failed: $e');
@@ -273,6 +355,8 @@ class _MyAppState extends State<MyApp> {
       _isLoggedIn = false;
       _currentUserId = null;
       _selectedTab = 0;
+      _trips.clear();
+      _activeTripIndex = 0;
     });
   }
 
@@ -294,6 +378,8 @@ class _MyAppState extends State<MyApp> {
       _exploreError = null;
       _explorePlaces = <ExplorePlaceResult>[];
       _exploreLocationLabel = null;
+      _trips.clear();
+      _activeTripIndex = 0;
     });
 
     _showGlobalSnackBar('Session expired. Please log in again.');
@@ -388,6 +474,12 @@ class _MyAppState extends State<MyApp> {
           image: placeMap['image']?.toString() ?? '',
           rating: (placeMap['rating'] as num?)?.toDouble(),
           type: placeMap['type']?.toString() ?? 'place',
+          lat: (placeMap['lat'] as num?)?.toDouble(),
+          lng: (placeMap['lng'] as num?)?.toDouble(),
+          address: placeMap['address']?.toString(),
+          date: placeMap['date']?.toString(),
+          venue: placeMap['venue']?.toString(),
+          ticketUrl: placeMap['ticketUrl']?.toString(),
         );
       }).toList();
 
@@ -424,63 +516,274 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  void _toggleAddDestination(ExplorePlaceResult destination) {
-    // Adding a destination also seeds the current itinerary so the planner reflects the selection.
-    setState(() {
-      if (_addedDestinationIds.contains(destination.id)) {
-        _addedDestinationIds.remove(destination.id);
-        _itinerary[1].activities.removeWhere((PlannedActivity activity) => activity.id == 'added-${destination.id}');
+  // Helper method to construct item structure for backend API from ExplorePlaceResult
+  Map<String, dynamic> _buildItemStructure(ExplorePlaceResult place) {
+    // Determine if this is a place or event based on available data
+    final bool isEvent = place.venue != null || place.date != null;
+    
+    final Map<String, dynamic> data = <String, dynamic>{
+      'name': place.name,
+      'image': place.image,
+    };
+
+    if (isEvent) {
+      // Event structure
+      data['date'] = place.date ?? '';
+      data['venue'] = place.venue ?? place.location;
+      data['ticketUrl'] = place.ticketUrl ?? '#';
+    } else {
+      // Place structure
+      data['address'] = place.address ?? place.location;
+      if (place.rating != null) {
+        data['rating'] = place.rating;
+      }
+      data['type'] = place.type;
+      if (place.lat != null) {
+        data['lat'] = place.lat;
+      }
+      if (place.lng != null) {
+        data['lng'] = place.lng;
+      }
+      data['placeId'] = place.id;
+    }
+
+    return <String, dynamic>{
+      'type': isEvent ? 'event' : 'place',
+      'data': data,
+    };
+  }
+
+  void _toggleAddDestination(ExplorePlaceResult destination) async {
+    // Adding/removing a destination to/from the backend trip
+    final int? userId = _currentUserId;
+    final String tripId = _activeTrip.id;
+
+    // Check if already added
+    if (_addedDestinationIds.contains(destination.id)) {
+      // Remove from backend
+      if (userId == null || tripId == 'placeholder') {
+        // Local placeholder trip, just update UI
+        setState(() {
+          _addedDestinationIds.remove(destination.id);
+          _itinerary[1].activities.removeWhere((PlannedActivity activity) => activity.id == 'added-${destination.id}');
+        });
         return;
       }
-      _addedDestinationIds.add(destination.id);
-      _itinerary[1].activities.add(
-        PlannedActivity(
-          id: 'added-${destination.id}',
-          title: destination.name,
-          time: '13:30',
-          category: ActivityCategory.activity,
-          cost: 0,
+
+      try {
+        _showGlobalSnackBar('Removing destination from trip...');
+        
+        // Find the item index in the backend trip by matching placeId
+        int itemIndex = -1;
+        if (_activeTrip.backendItems != null) {
+          for (int i = 0; i < _activeTrip.backendItems!.length; i++) {
+            final dynamic item = _activeTrip.backendItems![i];
+            if (item is Map) {
+              final dynamic data = item['data'];
+              if (data is Map) {
+                // Check if this item matches by placeId (for places) or name (for events)
+                final String? placeId = data['placeId']?.toString();
+                if (placeId == destination.id) {
+                  itemIndex = i;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        if (itemIndex == -1) {
+          _showGlobalSnackBar('Could not find destination in trip');
+          return;
+        }
+
+        // Call backend to remove the item
+        final response = await removeFromTrip(userId, tripId, itemIndex);
+
+        if (!mounted) {
+          return;
+        }
+
+        // Check for errors in response
+        if (response['error'] != null && response['error'].toString().isNotEmpty) {
+          _showGlobalSnackBar('Error removing destination: ${response['error']}');
+          return;
+        }
+
+        // Update local state
+        setState(() {
+          _addedDestinationIds.remove(destination.id);
+          _itinerary[1].activities.removeWhere((PlannedActivity activity) => activity.id == 'added-${destination.id}');
+        });
+
+        // Refresh trip from backend to get latest state
+        await _fetchTripsFromBackend(userId);
+        _showGlobalSnackBar('Destination removed!');
+      } catch (e) {
+        final bool handled = await _handleSessionExpired(e);
+        if (handled) {
+          return;
+        }
+        _showGlobalSnackBar('Error removing destination: $e');
+      }
+      return;
+    }
+
+    // Add to backend
+    if (userId == null) {
+      _showGlobalSnackBar('Please log in before adding destinations.');
+      return;
+    }
+
+    if (tripId == 'placeholder') {
+      _showGlobalSnackBar('Please create a trip first.');
+      return;
+    }
+
+    try {
+      _showGlobalSnackBar('Adding destination to trip...');
+      
+      final Map<String, dynamic> item = _buildItemStructure(destination);
+      final response = await addToTrip(userId, tripId, item);
+
+      if (!mounted) {
+        return;
+      }
+
+      // Check for errors in response
+      if (response['error'] != null && response['error'].toString().isNotEmpty) {
+        _showGlobalSnackBar('Error adding destination: ${response['error']}');
+        return;
+      }
+
+      // Update local state and itinerary
+      setState(() {
+        _addedDestinationIds.add(destination.id);
+        _itinerary[1].activities.add(
+          PlannedActivity(
+            id: 'added-${destination.id}',
+            title: destination.name,
+            time: '13:30',
+            category: ActivityCategory.activity,
+            cost: 0,
+          ),
+        );
+      });
+
+      // Refresh trip from backend to stay in sync
+      await _fetchTripsFromBackend(userId);
+      _showGlobalSnackBar('Destination added successfully!');
+    } catch (e) {
+      final bool handled = await _handleSessionExpired(e);
+      if (handled) {
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      _showGlobalSnackBar('Failed to add destination: $e');
+    }
+  }
+
+  Future<void> _createNewTrip() async {
+    final BuildContext? dialogHostContext = _appNavigatorKey.currentContext;
+    if (dialogHostContext == null) {
+      return;
+    }
+
+    final int? userId = _currentUserId;
+    if (userId == null) {
+      _showGlobalSnackBar('Please log in before creating a trip.');
+      return;
+    }
+
+    // Show dialog to get location from user
+    String enteredLocation = '';
+    final String? location = await showDialog<String>(
+      context: dialogHostContext,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Create New Trip'),
+        content: TextField(
+          onChanged: (String value) {
+            enteredLocation = value;
+          },
+          decoration: const InputDecoration(
+            hintText: 'Enter destination location',
+            border: OutlineInputBorder(),
+          ),
         ),
-      );
-    });
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, enteredLocation),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+
+    if (location == null || location.trim().isEmpty) {
+      return; // User cancelled or entered empty location
+    }
+
+    try {
+      // Call backend createTrip endpoint
+      final response = await createTrip(userId, location.trim());
+
+      if (!mounted) {
+        return;
+      }
+
+      // Check for errors in response
+      if (response['error'] != null && response['error'].toString().isNotEmpty) {
+        _showGlobalSnackBar('Error creating trip: ${response['error']}');
+        return;
+      }
+
+      // Trip created successfully, reload the trips list from backend
+      await _fetchTripsFromBackend(userId);
+
+      if (!mounted) {
+        return;
+      }
+
+      // Set the newly created trip as active
+      setState(() {
+        if (_trips.isNotEmpty) {
+          _activeTripIndex = _trips.length - 1;
+          _selectedTab = 3; // Switch to planner tab
+        }
+      });
+
+      _showGlobalSnackBar('Trip created successfully!');
+    } catch (e) {
+      final bool handled = await _handleSessionExpired(e);
+      if (handled) {
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      _showGlobalSnackBar('Failed to create trip: $e');
+    }
   }
 
-  void _createNewTrip() {
-    // Create a fresh trip and make it the active planner context.
-    final int number = _trips.length + 1;
-    setState(() {
-      _trips.add(
-        Trip(
-          id: 'trip-$number',
-          destination: 'New Adventure $number',
-          location: 'Choose your destination',
-          dates: 'Select travel dates',
-          image:
-              'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
-          estimatedBudget: 1500,
-          flightInfo: 'Add flight details',
-          hotelAddress: 'Add hotel address',
-          reservations: const <String>['No reservations added yet'],
-        ),
-      );
-      _activeTripIndex = _trips.length - 1;
-      _selectedTab = 3;
-    });
-  }
+  void _selectTripFromDashboard(Trip trip) {
+    // Dashboard selection should be explicit and visible before navigating elsewhere.
+    final int selectedIndex = _trips.indexWhere((Trip t) => t.id == trip.id);
+    if (selectedIndex == -1) {
+      return;
+    }
 
-  void _openPlannerForTrip(Trip trip) {
-    // Card taps switch the planner to the selected trip.
     setState(() {
-      _activeTripIndex = _trips.indexWhere((Trip t) => t.id == trip.id);
-      _selectedTab = 3;
-    });
-  }
-
-  void _openTripDetailsForTrip(Trip trip) {
-    // The travel-mode view should always match the trip the user tapped.
-    setState(() {
-      _activeTripIndex = _trips.indexWhere((Trip t) => t.id == trip.id);
-      _selectedTab = 4;
+      _activeTripIndex = selectedIndex;
     });
   }
 
@@ -684,11 +987,11 @@ class _MyAppState extends State<MyApp> {
                     ),
                     DashboardScreen(
                       trips: _trips,
+                      activeTripId: _activeTrip.id,
                       savedTrips: _savedTrips,
                       onToggleSaveTrip: _toggleSaveTrip,
                       onCreateNewTrip: _createNewTrip,
-                      onOpenTripPlanner: _openPlannerForTrip,
-                      onOpenTripDetails: _openTripDetailsForTrip,
+                      onSelectTrip: _selectTripFromDashboard,
                     ),
                     ExploreScreen(
                       query: _exploreQuery,
@@ -1375,19 +1678,19 @@ class DashboardScreen extends StatelessWidget {
   const DashboardScreen({
     super.key,
     required this.trips,
+    required this.activeTripId,
     required this.savedTrips,
     required this.onToggleSaveTrip,
     required this.onCreateNewTrip,
-    required this.onOpenTripPlanner,
-    required this.onOpenTripDetails,
+    required this.onSelectTrip,
   });
 
   final List<Trip> trips;
+  final String activeTripId;
   final Set<String> savedTrips;
   final ValueChanged<String> onToggleSaveTrip;
   final VoidCallback onCreateNewTrip;
-  final ValueChanged<Trip> onOpenTripPlanner;
-  final ValueChanged<Trip> onOpenTripDetails;
+  final ValueChanged<Trip> onSelectTrip;
 
   @override
   Widget build(BuildContext context) {
@@ -1414,7 +1717,7 @@ class DashboardScreen extends StatelessWidget {
               ),
             ),
             FilledButton.icon(
-              onPressed: onCreateNewTrip,
+              onPressed: () => onCreateNewTrip(),
               icon: const Icon(Icons.add_rounded),
               label: const Text('Create'),
               style: FilledButton.styleFrom(
@@ -1437,12 +1740,16 @@ class DashboardScreen extends StatelessWidget {
         const SizedBox(height: 14),
         ...trips.map((Trip trip) {
           final bool saved = savedTrips.contains(trip.id);
+          final bool isActive = trip.id == activeTripId;
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFFE8E0D5)),
+              border: Border.all(
+                color: isActive ? const Color(0xFF2196A6) : const Color(0xFFE8E0D5),
+                width: isActive ? 2 : 1,
+              ),
             ),
             child: Column(
               children: <Widget>[
@@ -1468,17 +1775,24 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
                 ListTile(
-                  onTap: () => onOpenTripPlanner(trip),
+                  onTap: () => onSelectTrip(trip),
                   title: Text(trip.destination, style: const TextStyle(fontWeight: FontWeight.w700)),
                   subtitle: Text('${trip.location}\n${trip.dates}'),
                   isThreeLine: true,
-                  trailing: FilledButton(
-                    onPressed: () => onOpenTripDetails(trip),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFF4845F),
-                      foregroundColor: Colors.white,
+                  trailing: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    child: FilledButton.icon(
+                      onPressed: () => onSelectTrip(trip),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: isActive ? const Color(0xFF2196A6) : const Color(0xFFF4845F),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(isActive ? 999 : 12),
+                        ),
+                      ),
+                      icon: Icon(isActive ? Icons.check_circle_rounded : Icons.trip_origin_rounded, size: 18),
+                      label: Text(isActive ? 'Selected' : 'Select'),
                     ),
-                    child: const Text('Open'),
                   ),
                 ),
               ],
@@ -1486,7 +1800,7 @@ class DashboardScreen extends StatelessWidget {
           );
         }),
         OutlinedButton.icon(
-          onPressed: onCreateNewTrip,
+          onPressed: () => onCreateNewTrip(),
           icon: const Icon(Icons.add_circle_outline_rounded),
           label: const Text('Create New Trip'),
           style: OutlinedButton.styleFrom(
@@ -2244,6 +2558,7 @@ class Trip {
     required this.flightInfo,
     required this.hotelAddress,
     required this.reservations,
+    this.backendItems,
   });
 
   final String id;
@@ -2255,6 +2570,8 @@ class Trip {
   final String flightInfo;
   final String hotelAddress;
   final List<String> reservations;
+  // Store the raw backend items for finding indices during remove operations
+  final List<dynamic>? backendItems;
 }
 
 class ExplorePlaceResult {
@@ -2266,6 +2583,12 @@ class ExplorePlaceResult {
     required this.image,
     required this.type,
     this.rating,
+    this.lat,
+    this.lng,
+    this.address,
+    this.date,
+    this.venue,
+    this.ticketUrl,
   });
 
   final String id;
@@ -2274,6 +2597,14 @@ class ExplorePlaceResult {
   final String image;
   final String type;
   final double? rating;
+  // Additional fields for places
+  final double? lat;
+  final double? lng;
+  final String? address;
+  // Additional fields for events
+  final String? date;
+  final String? venue;
+  final String? ticketUrl;
 }
 
 class ItineraryDay {

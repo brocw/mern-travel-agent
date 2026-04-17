@@ -65,9 +65,12 @@ Future<void> _persistIdentityFromToken(
   String token,
 ) async {
   final Map<String, dynamic>? payload = _decodeJwtPayload(token);
-  final String userId = payload?['userId']?.toString() ?? '';
+  final dynamic rawUserId = payload?['userId'];
+  final int? userId = rawUserId is int
+      ? rawUserId
+      : int.tryParse(rawUserId?.toString() ?? '');
 
-  if (userId.isEmpty) {
+  if (userId == null) {
     throw Exception('Token missing userId claim.');
   }
 
@@ -79,7 +82,7 @@ Future<void> _persistIdentityFromToken(
     'JWT identity decoded -> userId: $userId, firstName: $firstName, lastName: $lastName',
   );
 
-  await prefs.setString(_authUserIdKey, userId);
+  await prefs.setInt(_authUserIdKey, userId);
   if (firstName.isNotEmpty) {
     await prefs.setString(_authFirstNameKey, firstName);
   } else {
@@ -176,7 +179,8 @@ Future<String?> getToken() async {
 
 Future<String?> getCurrentUserId() async {
   final prefs = await SharedPreferences.getInstance();
-  return prefs.getString(_authUserIdKey);
+  final int? userId = prefs.getInt(_authUserIdKey);
+  return userId?.toString();
 }
 
 Future<String?> getCurrentFirstName() async {
@@ -254,32 +258,32 @@ Future<Map<String, dynamic>> getEvents(String location, String startDate, String
   return await postProtectedAndRefreshToken('getEvents',{'location': location.trim(), 'startDate': startDate, 'endDate': endDate});
 }
 
-Future<Map<String, dynamic>> createTrip(String userId, String location) async {
-  return await postProtectedAndRefreshToken('createTrip', {'userId': userId.trim(), 'location': location.trim()});
+Future<Map<String, dynamic>> createTrip(int userId, String location) async {
+  return await postProtectedAndRefreshToken('createTrip', {'userId': userId, 'location': location.trim()});
 }
 
-Future<Map<String, dynamic>> getTrips(String userId) async {
-  return await postProtectedAndRefreshToken('getTrips', {'userId': userId.trim()});
+Future<Map<String, dynamic>> getTrips(int userId) async {
+  return await postProtectedAndRefreshToken('getTrips', {'userId': userId});
 }
 
 Future<Map<String, dynamic>> addToTrip(
-  String userId,
+  int userId,
   String tripId,
   Map<String, dynamic> item,
 ) async {
   return await postProtectedAndRefreshToken('addToTrip', {
-    'userId': userId.trim(),
+    'userId': userId,
     'tripId': tripId.trim(),
     'item': item,
   });
 }
 
-Future<Map<String, dynamic>> removeFromTrip(String userId, String tripId, int itemIndex) async {
-  return await postProtectedAndRefreshToken('removeFromTrip', {'userId': userId.trim(), 'tripId': tripId.trim(), 'itemIndex': itemIndex});
+Future<Map<String, dynamic>> removeFromTrip(int userId, String tripId, int itemIndex) async {
+  return await postProtectedAndRefreshToken('removeFromTrip', {'userId': userId, 'tripId': tripId.trim(), 'itemIndex': itemIndex});
 }
 
-Future<Map<String, dynamic>> deleteTrip(String userId, String tripId) async {
-  return await postProtectedAndRefreshToken('deleteTrip', {'userId': userId.trim(), 'tripId': tripId.trim()});
+Future<Map<String, dynamic>> deleteTrip(int userId, String tripId) async {
+  return await postProtectedAndRefreshToken('deleteTrip', {'userId': userId, 'tripId': tripId.trim()});
 }
 
 Future<Map<String, dynamic>> searchFlights(String departureId,String arrivalId,String outboundDate, {String returnDate = '', String tripType = '1', int adults = 1, String travelClass = '1', String departureToken = '', String bookingToken = ''}) async {
