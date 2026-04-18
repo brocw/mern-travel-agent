@@ -49,6 +49,7 @@ const features = [
 const LoginPage = () => {
   const [showLogin, setShowLogin] = useState(false);
 
+  const isLoggedIn = !!localStorage.getItem('user_data');
   return (
     <div className="th-landing">
       {/* ── Navbar ── */}
@@ -62,9 +63,13 @@ const LoginPage = () => {
         <div className="th-landing-nav-links">
           <a href="/search" className="th-landing-nav-link">Explore</a>
           <a href="/trips" className="th-landing-nav-link">My Trips</a>
-          <button className="th-landing-nav-signin" onClick={() => setShowLogin(true)}>
-            Sign In
-          </button>
+          {isLoggedIn ? (
+            <a href="/search" className="th-landing-nav-signin">Explore →</a>
+          ) : (
+            <button className="th-landing-nav-signin" onClick={() => isLoggedIn ? window.location.href = '/search' : setShowLogin(true)}>
+              Sign In
+            </button>
+          )}
         </div>
       </header>
 
@@ -91,7 +96,7 @@ const LoginPage = () => {
           </p>
 
           {/* Search bar */}
-          <form className="th-hero-search" onSubmit={(e) => { e.preventDefault(); setShowLogin(true); }}>
+          <form className="th-hero-search" onSubmit={(e) => { e.preventDefault(); isLoggedIn ? window.location.href = '/search' : setShowLogin(true); }}>
             <div className="th-hero-search-input-wrap">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -109,7 +114,7 @@ const LoginPage = () => {
           {/* Quick filters */}
           <div className="th-hero-filters">
             {quickActivities.map(({ label, emoji }) => (
-              <button key={label} className="th-hero-filter-chip" onClick={() => setShowLogin(true)}>
+              <button key={label} className="th-hero-filter-chip" onClick={() => isLoggedIn ? window.location.href = '/search' : setShowLogin(true)}>
                 <span>{emoji}</span> {label}
               </button>
             ))}
@@ -117,14 +122,14 @@ const LoginPage = () => {
 
           {/* CTAs */}
           <div className="th-hero-ctas">
-            <button className="th-hero-cta-primary" onClick={() => setShowLogin(true)}>
+            <button className="th-hero-cta-primary" onClick={() => isLoggedIn ? window.location.href = '/search' : setShowLogin(true)}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
                 <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
               </svg>
               Explore Trips
             </button>
-            <button className="th-hero-cta-secondary" onClick={() => setShowLogin(true)}>
+            <button className="th-hero-cta-secondary" onClick={() => isLoggedIn ? window.location.href = '/search' : setShowLogin(true)}>
               Start Planning
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="9 18 15 12 9 6"/>
@@ -173,7 +178,7 @@ const LoginPage = () => {
                 Hand-picked for unforgettable experiences
               </p>
             </div>
-            <button className="th-destinations-viewall" onClick={() => setShowLogin(true)}>
+            <button className="th-destinations-viewall" onClick={() => isLoggedIn ? window.location.href = '/search' : setShowLogin(true)}>
               View all
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="9 18 15 12 9 6"/>
@@ -182,7 +187,7 @@ const LoginPage = () => {
           </div>
           <div className="th-destinations-grid">
             {featured.map(({ name, img, rating, tag }) => (
-              <button key={name} className="th-destination-card" onClick={() => setShowLogin(true)}>
+              <button key={name} className="th-destination-card" onClick={() => isLoggedIn ? window.location.href = '/search' : setShowLogin(true)}>
                 <img src={img} alt={name} className="th-destination-img" />
                 <div className="th-destination-overlay" />
                 <div className="th-destination-tag">{tag}</div>
@@ -210,7 +215,7 @@ const LoginPage = () => {
             <p className="th-cta-sub">
               Join thousands of travelers who plan smarter with Triptastic.
             </p>
-            <button className="th-cta-btn" onClick={() => setShowLogin(true)}>
+            <button className="th-cta-btn" onClick={() => isLoggedIn ? window.location.href = '/search' : setShowLogin(true)}>
               Get Started Free
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
