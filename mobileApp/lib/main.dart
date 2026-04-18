@@ -3153,6 +3153,274 @@ class _TransportationScreenState extends State<TransportationScreen> {
     return plans;
   }
 
+  bool _hasStoredFlightPlans() {
+    return _storedTransportPlans().any(
+      (_StoredTransportPlan plan) => plan.itemType == 'flight',
+    );
+  }
+
+  bool _hasStoredDrivingPlans() {
+    return _storedTransportPlans().any(
+      (_StoredTransportPlan plan) =>
+          plan.itemType == 'driving' || plan.itemType == 'drive',
+    );
+  }
+
+  bool _hasStoredUndecidedPlans() {
+    return _storedTransportPlans().any(
+      (_StoredTransportPlan plan) => plan.itemType == 'undecided',
+    );
+  }
+
+  TransportationChoice _choiceForItemType(String itemType) {
+    final String normalized = itemType.toLowerCase();
+    if (normalized == 'flight') {
+      return TransportationChoice.flying;
+    }
+    if (normalized == 'driving' || normalized == 'drive') {
+      return TransportationChoice.driving;
+    }
+    if (normalized == 'undecided') {
+      return TransportationChoice.undecided;
+    }
+    return TransportationChoice.none;
+  }
+
+  Future<void> _saveDrivingPlanToTrip() async {
+    final int? userId = widget.userId;
+    if (userId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please log in first.')));
+      return;
+    }
+
+    if (widget.trip.id == 'placeholder') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a trip from Dashboard first.'),
+        ),
+      );
+      return;
+    }
+
+    if (_hasStoredFlightPlans() || _hasStoredUndecidedPlans()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Delete existing flight/undecided plans before switching to driving.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (_hasStoredDrivingPlans()) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'type': 'driving',
+        'data': <String, dynamic>{
+          'name': 'Driving selected',
+          'mode': 'driving',
+          'updatedAt': DateTime.now().toIso8601String(),
+        },
+      };
+
+      final Map<String, dynamic> response = await addToTrip(
+        userId,
+        widget.trip.id,
+        item,
+      );
+      final String errorMessage = response['error']?.toString() ?? '';
+
+      if (!mounted) {
+        return;
+      }
+
+      if (errorMessage.trim().isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save driving plan: $errorMessage')),
+        );
+        return;
+      }
+
+      await widget.onTripUpdated();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Driving plan saved.')));
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save driving plan: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _selectDrivingMode() async {
+    if (_hasStoredFlightPlans() || _hasStoredUndecidedPlans()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Delete existing flight/undecided plans before switching to driving.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _choice = TransportationChoice.driving;
+      });
+    }
+    await _saveDrivingPlanToTrip();
+  }
+
+  void _selectFlyingMode() {
+    if (_hasStoredDrivingPlans() || _hasStoredUndecidedPlans()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Delete existing driving/undecided plans before switching to flights.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _choice = TransportationChoice.flying;
+    });
+  }
+
+  Future<void> _saveUndecidedPlanToTrip() async {
+    final int? userId = widget.userId;
+    if (userId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please log in first.')));
+      return;
+    }
+
+    if (widget.trip.id == 'placeholder') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a trip from Dashboard first.'),
+        ),
+      );
+      return;
+    }
+
+    if (_hasStoredFlightPlans() || _hasStoredDrivingPlans()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Delete existing flight/driving plans before switching to undecided.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (_hasStoredUndecidedPlans()) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'type': 'undecided',
+        'data': <String, dynamic>{
+          'name': 'Transportation undecided',
+          'mode': 'undecided',
+          'updatedAt': DateTime.now().toIso8601String(),
+        },
+      };
+
+      final Map<String, dynamic> response = await addToTrip(
+        userId,
+        widget.trip.id,
+        item,
+      );
+      final String errorMessage = response['error']?.toString() ?? '';
+
+      if (!mounted) {
+        return;
+      }
+
+      if (errorMessage.trim().isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save undecided plan: $errorMessage'),
+          ),
+        );
+        return;
+      }
+
+      await widget.onTripUpdated();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Undecided plan saved.')));
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save undecided plan: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _selectUndecidedMode() async {
+    if (_hasStoredFlightPlans() || _hasStoredDrivingPlans()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Delete existing flight/driving plans before switching to undecided.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _choice = TransportationChoice.undecided;
+      });
+    }
+    await _saveUndecidedPlanToTrip();
+  }
+
   String _transportPlanTitle(_StoredTransportPlan plan) {
     final String name = plan.data['name']?.toString() ?? '';
     if (name.trim().isNotEmpty) {
@@ -3260,6 +3528,14 @@ class _TransportationScreenState extends State<TransportationScreen> {
       _isSaving = true;
     });
 
+    final List<_StoredTransportPlan> currentPlans = _storedTransportPlans();
+    final TransportationChoice deletedChoice = _choiceForItemType(plan.itemType);
+    final bool hasSameTypeAfterDelete = currentPlans.any(
+      (_StoredTransportPlan existing) =>
+          existing.backendIndex != plan.backendIndex &&
+          _choiceForItemType(existing.itemType) == deletedChoice,
+    );
+
     try {
       final Map<String, dynamic> response = await removeFromTrip(
         userId,
@@ -3277,6 +3553,12 @@ class _TransportationScreenState extends State<TransportationScreen> {
           SnackBar(content: Text('Failed to delete plan: $errorMessage')),
         );
         return;
+      }
+
+      if (_choice == deletedChoice && !hasSameTypeAfterDelete) {
+        setState(() {
+          _choice = TransportationChoice.none;
+        });
       }
 
       await widget.onTripUpdated();
@@ -3498,6 +3780,17 @@ class _TransportationScreenState extends State<TransportationScreen> {
   }
 
   Future<void> _saveFlightToTrip(Map<String, dynamic> flight) async {
+    if (_hasStoredDrivingPlans() || _hasStoredUndecidedPlans()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Delete existing driving/undecided plans before saving a flight plan.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final int? userId = widget.userId;
     if (userId == null) {
       ScaffoldMessenger.of(
@@ -3569,6 +3862,17 @@ class _TransportationScreenState extends State<TransportationScreen> {
     Map<String, dynamic> outboundFlight,
     Map<String, dynamic> returnFlight,
   ) async {
+    if (_hasStoredDrivingPlans() || _hasStoredUndecidedPlans()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Delete existing driving/undecided plans before saving a flight plan.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final int? userId = widget.userId;
     if (userId == null) {
       ScaffoldMessenger.of(
@@ -4099,11 +4403,7 @@ class _TransportationScreenState extends State<TransportationScreen> {
           title: 'Search for a flight',
           subtitle: 'Use live flight results and save an option to this trip.',
           selected: _choice == TransportationChoice.flying,
-          onTap: () {
-            setState(() {
-              _choice = TransportationChoice.flying;
-            });
-          },
+          onTap: _selectFlyingMode,
         ),
         _modeCard(
           icon: Icons.directions_car_rounded,
@@ -4111,9 +4411,7 @@ class _TransportationScreenState extends State<TransportationScreen> {
           subtitle: 'Track this as your transportation choice.',
           selected: _choice == TransportationChoice.driving,
           onTap: () {
-            setState(() {
-              _choice = TransportationChoice.driving;
-            });
+            _selectDrivingMode();
           },
         ),
         _modeCard(
@@ -4122,9 +4420,7 @@ class _TransportationScreenState extends State<TransportationScreen> {
           subtitle: 'Mark transportation as undecided for now.',
           selected: _choice == TransportationChoice.undecided,
           onTap: () {
-            setState(() {
-              _choice = TransportationChoice.undecided;
-            });
+            _selectUndecidedMode();
           },
         ),
         const SizedBox(height: 14),
@@ -4252,6 +4548,96 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Map<String, dynamic> _activeTransportInfo() {
+    final List<dynamic> backendItems = widget.trip.backendItems ?? <dynamic>[];
+
+    for (int i = backendItems.length - 1; i >= 0; i--) {
+      final dynamic item = backendItems[i];
+      if (item is! Map) {
+        continue;
+      }
+
+      final String itemType = item['type']?.toString().toLowerCase() ?? '';
+      final dynamic rawData = item['data'];
+      final Map<String, dynamic> data = rawData is Map
+          ? Map<String, dynamic>.from(rawData)
+          : <String, dynamic>{};
+
+      if (itemType == 'driving' || itemType == 'drive') {
+        final String name = data['name']?.toString() ?? 'Driving selected';
+        return <String, dynamic>{
+          'title': 'Driving Plan',
+          'content': name,
+          'icon': Icons.directions_car_rounded,
+        };
+      }
+
+      if (itemType == 'undecided') {
+        final String name = data['name']?.toString() ?? 'Transportation undecided';
+        return <String, dynamic>{
+          'title': 'Undecided Plan',
+          'content': name,
+          'icon': Icons.schedule_rounded,
+        };
+      }
+
+      if (itemType == 'flight') {
+        final String name = data['name']?.toString() ?? 'Flight selected';
+        final String there = <String>[
+          data['departure_airport']?.toString() ?? '',
+          data['arrival_airport']?.toString() ?? '',
+        ].where((String s) => s.trim().isNotEmpty).join(' → ');
+        final String thereTime = <String>[
+          data['departure_time']?.toString() ?? '',
+          data['arrival_time']?.toString() ?? '',
+        ].where((String s) => s.trim().isNotEmpty).join(' • ');
+        final String back = <String>[
+          data['return_departure_airport']?.toString() ?? '',
+          data['return_arrival_airport']?.toString() ?? '',
+        ].where((String s) => s.trim().isNotEmpty).join(' → ');
+        final String backTime = <String>[
+          data['return_departure_time']?.toString() ?? '',
+          data['return_arrival_time']?.toString() ?? '',
+        ].where((String s) => s.trim().isNotEmpty).join(' • ');
+
+        final List<String> lines = <String>[name];
+        if (there.isNotEmpty) {
+          lines.add('There: $there');
+        }
+        if (thereTime.isNotEmpty) {
+          lines.add(thereTime);
+        }
+        if (back.isNotEmpty) {
+          lines.add('Back: $back');
+        }
+        if (backTime.isNotEmpty) {
+          lines.add(backTime);
+        }
+
+        return <String, dynamic>{
+          'title': 'Flight Plan',
+          'content': lines.join('\n'),
+          'icon': Icons.flight_rounded,
+        };
+      }
+    }
+
+    if (widget.trip.flightInfo.trim().isNotEmpty) {
+      return <String, dynamic>{
+        'title': 'Flight Plan',
+        'content': widget.trip.flightInfo,
+        'icon': Icons.flight_rounded,
+      };
+    }
+
+    return <String, dynamic>{
+      'title': 'Transport Plan',
+      'content':
+          'No transportation plan selected yet. Choose driving or flights from the Transport tab.',
+      'icon': Icons.info_outline_rounded,
+    };
   }
 
   @override
@@ -4408,14 +4794,17 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
   }
 
   Widget _travelInfoTab() {
-    // Flight details are grouped here so travelers can find logistics quickly.
+    // Show the active transportation mode selected from the Transport tab.
+    final Map<String, dynamic> transportInfo = _activeTransportInfo();
     return ListView(
       padding: const EdgeInsets.all(14),
       children: <Widget>[
         _infoCard(
-          title: 'Flight Info',
-          content: widget.trip.flightInfo,
-          icon: Icons.flight_rounded,
+          title: transportInfo['title']?.toString() ?? 'Transport Plan',
+          content: transportInfo['content']?.toString() ?? '',
+          icon: transportInfo['icon'] is IconData
+              ? transportInfo['icon'] as IconData
+              : Icons.info_outline_rounded,
         ),
       ],
     );
