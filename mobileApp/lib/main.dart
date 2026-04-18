@@ -109,10 +109,26 @@ class _MyAppState extends State<MyApp> {
           final List<dynamic> items = tripData['Items'] is List
               ? tripData['Items'] as List<dynamic>
               : <dynamic>[];
-          final List<String> itemNames = <String>[];
+          final List<HousingStay> housingStays = <HousingStay>[];
           final String imageUrl = await _resolveTripPreviewImage(tripLocation);
           String flightInfo = '';
-          String hotelAddress = '';
+
+          bool isHousingItem(String itemType, Map<dynamic, dynamic> data) {
+            final String normalizedType = itemType.toLowerCase();
+            final String nestedType =
+                data['type']?.toString().toLowerCase() ?? '';
+            final String category =
+                data['category']?.toString().toLowerCase() ?? '';
+            final String name = data['name']?.toString().toLowerCase() ?? '';
+            final String combined = '$normalizedType $nestedType $category';
+
+            return combined.contains('hotel') ||
+                combined.contains('lodging') ||
+                combined.contains('resort') ||
+                combined.contains('accommodation') ||
+                name.contains('hotel') ||
+                name.contains('resort');
+          }
 
           for (final dynamic item in items) {
             if (item is! Map) {
@@ -126,8 +142,16 @@ class _MyAppState extends State<MyApp> {
             }
 
             final String? name = data['name']?.toString();
-            if (name != null && name.isNotEmpty) {
-              itemNames.add(name);
+            final bool housingItem = isHousingItem(itemType, data);
+
+            if (housingItem) {
+              final String housingName = (name != null && name.isNotEmpty)
+                  ? name
+                  : 'Hotel / Resort';
+              final String housingAddress = data['address']?.toString() ?? '';
+              housingStays.add(
+                HousingStay(name: housingName, address: housingAddress),
+              );
             }
 
             if (itemType == 'flight' &&
@@ -135,13 +159,6 @@ class _MyAppState extends State<MyApp> {
                 name != null &&
                 name.isNotEmpty) {
               flightInfo = name;
-            }
-
-            if (itemType == 'hotel' && hotelAddress.isEmpty) {
-              final String? address = data['address']?.toString();
-              if (address != null && address.isNotEmpty) {
-                hotelAddress = address;
-              }
             }
           }
 
@@ -161,10 +178,8 @@ class _MyAppState extends State<MyApp> {
             image: imageUrl,
             estimatedBudget: 0.0,
             flightInfo: flightInfo,
-            hotelAddress: hotelAddress,
-            reservations: itemNames.isNotEmpty
-                ? itemNames
-                : <String>['No items added yet'],
+            hotelAddress: '',
+            housing: housingStays,
             backendItems: items,
           );
         } catch (e) {
@@ -256,9 +271,7 @@ class _MyAppState extends State<MyApp> {
   // Navigation and shared trip state for the entire app.
   int _selectedTab = 0;
   int? _activeTripIndex;
-  String _landingQuery = '';
   String _selectedExploreCategory = 'places';
-  final Set<String> _savedTrips = <String>{'trip-1', 'trip-3'};
   final Set<String> _addedDestinationIds = <String>{};
 
   // Trips are now loaded from backend via _fetchTripsFromBackend()
@@ -347,7 +360,7 @@ class _MyAppState extends State<MyApp> {
         estimatedBudget: 0,
         flightInfo: '',
         hotelAddress: '',
-        reservations: const <String>[],
+        housing: const <HousingStay>[],
       );
     }
     return _trips[_activeTripIndex!];
@@ -508,23 +521,18 @@ class _MyAppState extends State<MyApp> {
 
   // Explore uses a single active category tab to mirror the website UX.
   void _selectExploreCategory(String categoryId) {
+    if (categoryId != 'places' &&
+        categoryId != 'hotels' &&
+        categoryId != 'events') {
+      categoryId = 'places';
+    }
+
     if (_selectedExploreCategory == categoryId) {
       return;
     }
 
     setState(() {
       _selectedExploreCategory = categoryId;
-    });
-  }
-
-  void _toggleSaveTrip(String tripId) {
-    // Toggles the saved bookmark state on dashboard cards.
-    setState(() {
-      if (_savedTrips.contains(tripId)) {
-        _savedTrips.remove(tripId);
-      } else {
-        _savedTrips.add(tripId);
-      }
     });
   }
 
@@ -1194,6 +1202,14 @@ class _MyAppState extends State<MyApp> {
     _loadExplorePlacesForLocation(trip.location);
   }
 
+  Future<void> _refreshTripsAfterTransportationChange() async {
+    final int? userId = _currentUserId;
+    if (userId == null) {
+      return;
+    }
+    await _fetchTripsFromBackend(userId);
+  }
+
   List<ItineraryDay> _buildBackendItinerary(Trip trip) {
     final List<dynamic> backendItems = trip.backendItems ?? <dynamic>[];
     if (backendItems.isEmpty) {
@@ -1539,25 +1555,10 @@ class _MyAppState extends State<MyApp> {
                 child: IndexedStack(
                   index: _selectedTab,
                   children: <Widget>[
-                    LandingScreen(
-                      query: _landingQuery,
-                      onQueryChanged: (String value) {
-                        setState(() {
-                          _landingQuery = value;
-                        });
-                      },
-                      onExplore: () => _goToTab(2),
-                      onStartPlanning: () => _goToTab(3),
-                      onQuickFilterTap: (String filterId) {
-                        _goToTab(2);
-                        _selectExploreCategory('places');
-                      },
-                    ),
+                    LandingScreen(onGetStarted: () => _goToTab(1)),
                     DashboardScreen(
                       trips: _trips,
                       activeTripId: _activeTrip.id,
-                      savedTrips: _savedTrips,
-                      onToggleSaveTrip: _toggleSaveTrip,
                       onCreateNewTrip: _createNewTrip,
                       onDeleteTrip: _confirmDeleteTrip,
                       onSelectTrip: _selectTripFromDashboard,
@@ -1572,17 +1573,16 @@ class _MyAppState extends State<MyApp> {
                       addedDestinationIds: _addedDestinationIds,
                       onToggleAddDestination: _toggleAddDestination,
                     ),
-                    PlannerScreen(
+                    TransportationScreen(
                       trip: _activeTrip,
-                      itinerary: _buildBackendItinerary(_activeTrip),
-                      onToggleDone: _toggleActivityDone,
-                      onAddActivity: _showAddActivitySheet,
+                      userId: _currentUserId,
+                      onTripUpdated: _refreshTripsAfterTransportationChange,
                       onOpenTravelMode: () => _goToTab(4),
                     ),
                     TripDetailsScreen(
                       trip: _activeTrip,
                       itinerary: _buildBackendItinerary(_activeTrip),
-                      onBackToPlanner: () => _goToTab(3),
+                      onBackToTransport: () => _goToTab(3),
                     ),
                   ],
                 ),
@@ -1605,7 +1605,7 @@ class _MyAppState extends State<MyApp> {
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.event_note_rounded),
-                    label: 'Planner',
+                    label: 'Transport',
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.airplanemode_active_rounded),
@@ -1642,20 +1642,9 @@ class _MyAppState extends State<MyApp> {
 
 // Landing hero, search, CTA buttons, and feature highlights.
 class LandingScreen extends StatelessWidget {
-  const LandingScreen({
-    super.key,
-    required this.query,
-    required this.onQueryChanged,
-    required this.onExplore,
-    required this.onStartPlanning,
-    required this.onQuickFilterTap,
-  });
+  const LandingScreen({super.key, required this.onGetStarted});
 
-  final String query;
-  final ValueChanged<String> onQueryChanged;
-  final VoidCallback onExplore;
-  final VoidCallback onStartPlanning;
-  final ValueChanged<String> onQuickFilterTap;
+  final VoidCallback onGetStarted;
 
   static const Color _oceanBlue = Color(0xFF2196A6);
   static const Color _sunsetOrange = Color(0xFFF4845F);
@@ -1749,90 +1738,20 @@ class LandingScreen extends StatelessWidget {
                         style: TextStyle(color: Colors.white70, fontSize: 15),
                       ),
                       const SizedBox(height: 16),
-                      TextField(
-                        onChanged: onQueryChanged,
-                        controller: TextEditingController(text: query)
-                          ..selection = TextSelection.collapsed(
-                            offset: query.length,
-                          ),
-                        decoration: InputDecoration(
-                          hintText:
-                              'Search hiking, snorkeling, nightlife, cities...',
-                          filled: true,
-                          fillColor: Colors.white,
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: IconButton(
-                            onPressed: onExplore,
-                            icon: const Icon(Icons.arrow_forward_rounded),
-                          ),
-                          border: OutlineInputBorder(
-                            borderSide: BorderSide.none,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
                       SizedBox(
-                        height: 36,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: <Widget>[
-                            _quickChip(
-                              'Beaches',
-                              () => onQuickFilterTap('beaches'),
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: onGetStarted,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _oceanBlue,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
                             ),
-                            _quickChip(
-                              'Hiking',
-                              () => onQuickFilterTap('hiking'),
-                            ),
-                            _quickChip(
-                              'Food Tours',
-                              () => onQuickFilterTap('food'),
-                            ),
-                            _quickChip(
-                              'Nightlife',
-                              () => onQuickFilterTap('nightlife'),
-                            ),
-                            _quickChip(
-                              'Museums',
-                              () => onQuickFilterTap('museums'),
-                            ),
-                          ],
+                          ),
+                          icon: const Icon(Icons.arrow_forward_rounded),
+                          label: const Text('Get Started'),
                         ),
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: onExplore,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: _oceanBlue,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              icon: const Icon(Icons.travel_explore_rounded),
-                              label: const Text('Explore Trips'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: onStartPlanning,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                side: const BorderSide(color: Colors.white54),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              icon: const Icon(Icons.edit_calendar_rounded),
-                              label: const Text('Start Planning'),
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
@@ -1888,33 +1807,6 @@ class LandingScreen extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _quickChip(String label, VoidCallback onTap) {
-    // Compact filter pills over the hero image for quick exploration entry.
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(100),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xE6FFFFFF),
-            borderRadius: BorderRadius.circular(100),
-            border: Border.all(color: const Color(0x88FFFFFF)),
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF1A2B3C),
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -2346,8 +2238,6 @@ class DashboardScreen extends StatelessWidget {
     super.key,
     required this.trips,
     required this.activeTripId,
-    required this.savedTrips,
-    required this.onToggleSaveTrip,
     required this.onCreateNewTrip,
     required this.onDeleteTrip,
     required this.onSelectTrip,
@@ -2355,8 +2245,6 @@ class DashboardScreen extends StatelessWidget {
 
   final List<Trip> trips;
   final String activeTripId;
-  final Set<String> savedTrips;
-  final ValueChanged<String> onToggleSaveTrip;
   final VoidCallback onCreateNewTrip;
   final ValueChanged<Trip> onDeleteTrip;
   final ValueChanged<Trip> onSelectTrip;
@@ -2400,31 +2288,8 @@ class DashboardScreen extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: const <Widget>[
-            _StatCard(
-              label: 'Trips Taken',
-              value: '24',
-              icon: Icons.airplanemode_active_rounded,
-            ),
-            _StatCard(
-              label: 'Countries',
-              value: '12',
-              icon: Icons.public_rounded,
-            ),
-            _StatCard(
-              label: 'Saved Places',
-              value: '38',
-              icon: Icons.favorite_rounded,
-            ),
-          ],
-        ),
         const SizedBox(height: 14),
         ...trips.map((Trip trip) {
-          final bool saved = savedTrips.contains(trip.id);
           final bool isActive = trip.id == activeTripId;
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -2451,18 +2316,6 @@ class DashboardScreen extends StatelessWidget {
                         height: 160,
                         width: double.infinity,
                         fit: BoxFit.cover,
-                      ),
-                      Positioned(
-                        top: 10,
-                        right: 10,
-                        child: IconButton.filledTonal(
-                          onPressed: () => onToggleSaveTrip(trip.id),
-                          icon: Icon(
-                            saved
-                                ? Icons.bookmark_rounded
-                                : Icons.bookmark_border_rounded,
-                          ),
-                        ),
                       ),
                       Positioned(
                         top: 10,
@@ -2556,13 +2409,21 @@ class ExploreScreen extends StatelessWidget {
   final Set<String> addedDestinationIds;
   final ValueChanged<ExplorePlaceResult> onToggleAddDestination;
 
+  String get _effectiveSelectedCategory {
+    if (selectedCategory == 'places' ||
+        selectedCategory == 'hotels' ||
+        selectedCategory == 'events') {
+      return selectedCategory;
+    }
+    return 'places';
+  }
+
   @override
   Widget build(BuildContext context) {
     final Map<String, int> counts = <String, int>{
       'places': 0,
       'hotels': 0,
       'events': 0,
-      'flights': 0,
     };
     for (final ExplorePlaceResult place in places) {
       counts[_resultCategory(place)] =
@@ -2572,7 +2433,7 @@ class ExploreScreen extends StatelessWidget {
     final List<ExplorePlaceResult> filtered = places.where((
       ExplorePlaceResult place,
     ) {
-      return _resultCategory(place) == selectedCategory;
+      return _resultCategory(place) == _effectiveSelectedCategory;
     }).toList();
 
     return ListView(
@@ -2609,12 +2470,6 @@ class ExploreScreen extends StatelessWidget {
                 icon: Icons.event_rounded,
                 label: 'Events',
                 count: counts['events'] ?? 0,
-              ),
-              _categoryChip(
-                id: 'flights',
-                icon: Icons.flight_takeoff_rounded,
-                label: 'Flights',
-                count: counts['flights'] ?? 0,
               ),
             ],
           ),
@@ -2806,7 +2661,7 @@ class ExploreScreen extends StatelessWidget {
     required String label,
     required int count,
   }) {
-    final bool active = selectedCategory == id;
+    final bool active = _effectiveSelectedCategory == id;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: InkWell(
@@ -2874,8 +2729,6 @@ class ExploreScreen extends StatelessWidget {
         return 'Hotel';
       case 'events':
         return 'Event';
-      case 'flights':
-        return 'Flight';
       default:
         return place.type.isEmpty ? 'Place' : place.type;
     }
@@ -2896,49 +2749,1280 @@ class ExploreScreen extends StatelessWidget {
       return 'hotels';
     }
 
-    if (normalizedType.contains('flight') ||
-        normalizedType.contains('airport') ||
-        normalizedName.contains('flight')) {
-      return 'flights';
-    }
-
     return 'places';
   }
 }
 
-// Day-by-day itinerary builder and budget tracker for the active trip.
-class PlannerScreen extends StatelessWidget {
-  const PlannerScreen({
+enum TransportationChoice { none, flying, driving, undecided }
+
+class _StoredTransportPlan {
+  const _StoredTransportPlan({
+    required this.backendIndex,
+    required this.itemType,
+    required this.data,
+  });
+
+  final int backendIndex;
+  final String itemType;
+  final Map<String, dynamic> data;
+}
+
+class TransportationScreen extends StatefulWidget {
+  const TransportationScreen({
     super.key,
     required this.trip,
-    required this.itinerary,
-    required this.onToggleDone,
-    required this.onAddActivity,
+    required this.userId,
+    required this.onTripUpdated,
     required this.onOpenTravelMode,
   });
 
   final Trip trip;
-  final List<ItineraryDay> itinerary;
-  final void Function(String dayId, String activityId) onToggleDone;
-  final ValueChanged<String> onAddActivity;
+  final int? userId;
+  final Future<void> Function() onTripUpdated;
   final VoidCallback onOpenTravelMode;
 
   @override
-  Widget build(BuildContext context) {
-    // The planner combines the itinerary editor and budget summary for the active trip.
-    final double total = itinerary
-        .expand((ItineraryDay day) => day.activities)
-        .fold<double>(
-          0,
-          (double sum, PlannedActivity activity) => sum + activity.cost,
-        );
-    final double budgetLimit = trip.estimatedBudget;
-    final double progress = budgetLimit == 0
-        ? 0
-        : (total / budgetLimit).clamp(0, 1);
-    final bool hasItems = itinerary.any(
-      (ItineraryDay day) => day.activities.isNotEmpty,
+  State<TransportationScreen> createState() => _TransportationScreenState();
+}
+
+class _TransportationScreenState extends State<TransportationScreen> {
+  final TextEditingController _fromController = TextEditingController();
+  final TextEditingController _toController = TextEditingController();
+  DateTime? _departDate;
+  DateTime? _returnDate;
+  TransportationChoice _choice = TransportationChoice.none;
+  bool _roundTrip = true;
+  bool _isSearching = false;
+  bool _isSaving = false;
+  int _adults = 1;
+  String _travelClass = '1';
+  String? _flightError;
+  List<Map<String, dynamic>> _flightResults = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _returnFlightResults = <Map<String, dynamic>>[];
+  Map<String, dynamic>? _selectedOutboundFlight;
+
+  @override
+  void dispose() {
+    _fromController.dispose();
+    _toController.dispose();
+    super.dispose();
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) {
+      return 'mm / dd / yyyy';
+    }
+    final String month = date.month.toString().padLeft(2, '0');
+    final String day = date.day.toString().padLeft(2, '0');
+    final String year = date.year.toString();
+    return '$month / $day / $year';
+  }
+
+  Future<void> _pickDate({required bool isReturnDate}) async {
+    final DateTime now = DateTime.now();
+    final DateTime initial = isReturnDate
+        ? (_returnDate ?? _departDate ?? now)
+        : (_departDate ?? now);
+
+    final DateTime? selected = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: now,
+      lastDate: DateTime(now.year + 3),
     );
+
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      if (isReturnDate) {
+        _returnDate = selected;
+      } else {
+        _departDate = selected;
+        if (_returnDate != null && _returnDate!.isBefore(_departDate!)) {
+          _returnDate = null;
+        }
+      }
+    });
+  }
+
+  Future<void> _searchForFlights() async {
+    final String departureId = _fromController.text.trim().toUpperCase();
+    final String arrivalId = _toController.text.trim().toUpperCase();
+
+    if (widget.trip.id == 'placeholder') {
+      setState(() {
+        _flightError = 'Please select or create a trip first from Dashboard.';
+      });
+      return;
+    }
+
+    if (departureId.length < 3 || arrivalId.length < 3 || _departDate == null) {
+      setState(() {
+        _flightError =
+            'From, To, and Depart date are required. Use airport codes like MCO and JFK.';
+      });
+      return;
+    }
+
+    if (_roundTrip && _returnDate == null) {
+      setState(() {
+        _flightError = 'Return date is required for round-trip searches.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _flightError = null;
+      _flightResults = <Map<String, dynamic>>[];
+      _returnFlightResults = <Map<String, dynamic>>[];
+      _selectedOutboundFlight = null;
+    });
+
+    try {
+      final String outboundDate = _departDate!
+          .toIso8601String()
+          .split('T')
+          .first;
+      final String returnDate =
+          _returnDate?.toIso8601String().split('T').first ?? '';
+      final Map<String, dynamic> response = await searchFlights(
+        departureId,
+        arrivalId,
+        outboundDate,
+        returnDate: _roundTrip ? returnDate : '',
+        tripType: _roundTrip ? '1' : '2',
+        adults: _adults,
+        travelClass: _travelClass,
+      );
+
+      final String errorMessage = response['error']?.toString() ?? '';
+      final List<dynamic> flights =
+          (response['flights'] as List<dynamic>?) ?? <dynamic>[];
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isSearching = false;
+        _flightError = errorMessage.trim().isNotEmpty
+            ? errorMessage
+            : (flights.isEmpty ? 'No flights found for this search.' : null);
+        _flightResults = flights
+            .whereType<Map>()
+            .map((Map flight) => Map<String, dynamic>.from(flight))
+            .toList();
+        _returnFlightResults = <Map<String, dynamic>>[];
+        _selectedOutboundFlight = null;
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isSearching = false;
+        _flightError = 'Flight search failed: $e';
+      });
+    }
+  }
+
+  String _departureTokenFromFlight(Map<String, dynamic> flight) {
+    final String direct = flight['departure_token']?.toString() ?? '';
+    if (direct.isNotEmpty) {
+      return direct;
+    }
+
+    final List<Map<String, dynamic>> segments = _segmentsFromFlightValue(
+      flight['flights'],
+    );
+    if (segments.isNotEmpty) {
+      return segments.first['departure_token']?.toString() ?? '';
+    }
+
+    return '';
+  }
+
+  Future<void> _loadReturnFlights(Map<String, dynamic> outboundFlight) async {
+    final String departureId = _fromController.text.trim().toUpperCase();
+    final String arrivalId = _toController.text.trim().toUpperCase();
+    final String departureToken = _departureTokenFromFlight(outboundFlight);
+
+    if (departureToken.isEmpty) {
+      setState(() {
+        _flightError =
+            'This outbound option does not include a return-flight token.';
+      });
+      return;
+    }
+
+    if (_departDate == null) {
+      setState(() {
+        _flightError =
+            'Departure date is required before loading return flights.';
+      });
+      return;
+    }
+
+    final String outboundDate = _departDate!.toIso8601String().split('T').first;
+    final String returnDate =
+        _returnDate?.toIso8601String().split('T').first ?? '';
+
+    setState(() {
+      _isSearching = true;
+      _flightError = null;
+      _selectedOutboundFlight = outboundFlight;
+      _returnFlightResults = <Map<String, dynamic>>[];
+    });
+
+    try {
+      final Map<String, dynamic> response = await searchFlights(
+        departureId,
+        arrivalId,
+        outboundDate,
+        returnDate: _roundTrip ? returnDate : '',
+        tripType: _roundTrip ? '1' : '2',
+        adults: _adults,
+        travelClass: _travelClass,
+        departureToken: departureToken,
+      );
+
+      final String errorMessage = response['error']?.toString() ?? '';
+      final List<dynamic> flights =
+          (response['flights'] as List<dynamic>?) ?? <dynamic>[];
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isSearching = false;
+        _flightError = errorMessage.trim().isNotEmpty
+            ? errorMessage
+            : (flights.isEmpty
+                  ? 'No return flights found for this outbound option.'
+                  : null);
+        _returnFlightResults = flights
+            .whereType<Map>()
+            .map((Map flight) => Map<String, dynamic>.from(flight))
+            .toList();
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isSearching = false;
+        _flightError = 'Unable to load return flights: $e';
+      });
+    }
+  }
+
+  Map<String, dynamic> _flightItemData(Map<String, dynamic> flight) {
+    final List<Map<String, dynamic>> outboundSegments =
+        _segmentsFromFlightValue(flight['flights']);
+    final List<Map<String, dynamic>> returnSegments =
+        _segmentsFromFlightValue(flight['return_flights']).isNotEmpty
+        ? _segmentsFromFlightValue(flight['return_flights'])
+        : _segmentsFromFlightValue(flight['returnFlights']);
+
+    final Map<String, dynamic> outboundSummary = _segmentSummary(
+      outboundSegments,
+      fallbackFrom: _fromController.text.trim().toUpperCase(),
+      fallbackTo: _toController.text.trim().toUpperCase(),
+    );
+    final Map<String, dynamic> returnSummary = _segmentSummary(
+      returnSegments,
+      fallbackFrom: _toController.text.trim().toUpperCase(),
+      fallbackTo: _fromController.text.trim().toUpperCase(),
+    );
+
+    final String airline = outboundSummary['airline']?.toString() ?? 'Flight';
+    final String departureCode = outboundSummary['from']?.toString() ?? '';
+    final String arrivalCode = outboundSummary['to']?.toString() ?? '';
+    final String departureTime =
+        outboundSummary['departureTime']?.toString() ?? '';
+    final String arrivalTime = outboundSummary['arrivalTime']?.toString() ?? '';
+    final bool hasReturn = returnSegments.isNotEmpty;
+    final String duration =
+        flight['total_duration']?.toString() ??
+        flight['duration']?.toString() ??
+        '';
+    final String price = flight['price']?.toString() ?? '';
+
+    return <String, dynamic>{
+      'name': hasReturn
+          ? '$airline $departureCode ↔ $arrivalCode'
+          : '$airline $departureCode → $arrivalCode',
+      'airline': airline,
+      'departure_time': departureTime,
+      'arrival_time': arrivalTime,
+      'return_departure_time': returnSummary['departureTime']?.toString() ?? '',
+      'return_arrival_time': returnSummary['arrivalTime']?.toString() ?? '',
+      'return_departure_airport': returnSummary['from']?.toString() ?? '',
+      'return_arrival_airport': returnSummary['to']?.toString() ?? '',
+      'has_return_leg': hasReturn,
+      'duration': duration,
+      'price': price,
+      'departure_airport': departureCode,
+      'arrival_airport': arrivalCode,
+      'type': 'flight',
+    };
+  }
+
+  List<Map<String, dynamic>> _segmentsFromFlightValue(dynamic value) {
+    if (value is! List) {
+      return <Map<String, dynamic>>[];
+    }
+    return value
+        .whereType<Map>()
+        .map((Map segment) => Map<String, dynamic>.from(segment))
+        .toList();
+  }
+
+  Map<String, dynamic> _segmentSummary(
+    List<Map<String, dynamic>> segments, {
+    required String fallbackFrom,
+    required String fallbackTo,
+  }) {
+    if (segments.isEmpty) {
+      return <String, dynamic>{
+        'airline': 'Flight',
+        'from': fallbackFrom,
+        'to': fallbackTo,
+        'departureTime': '',
+        'arrivalTime': '',
+      };
+    }
+
+    final Map<String, dynamic> first = segments.first;
+    final Map<String, dynamic> last = segments.last;
+
+    final Map<String, dynamic> departureAirport =
+        first['departure_airport'] is Map
+        ? Map<String, dynamic>.from(first['departure_airport'] as Map)
+        : <String, dynamic>{};
+    final Map<String, dynamic> arrivalAirport = last['arrival_airport'] is Map
+        ? Map<String, dynamic>.from(last['arrival_airport'] as Map)
+        : <String, dynamic>{};
+
+    return <String, dynamic>{
+      'airline': first['airline']?.toString() ?? 'Flight',
+      'from': departureAirport['id']?.toString() ?? fallbackFrom,
+      'to': arrivalAirport['id']?.toString() ?? fallbackTo,
+      'departureTime': departureAirport['time']?.toString() ?? '',
+      'arrivalTime': arrivalAirport['time']?.toString() ?? '',
+    };
+  }
+
+  List<_StoredTransportPlan> _storedTransportPlans() {
+    final List<dynamic> backendItems = widget.trip.backendItems ?? <dynamic>[];
+    final List<_StoredTransportPlan> plans = <_StoredTransportPlan>[];
+
+    for (int i = 0; i < backendItems.length; i++) {
+      final dynamic item = backendItems[i];
+      if (item is! Map) {
+        continue;
+      }
+
+      final String itemType = item['type']?.toString().toLowerCase() ?? '';
+      if (itemType != 'flight' &&
+          itemType != 'driving' &&
+          itemType != 'drive' &&
+          itemType != 'undecided' &&
+          itemType != 'transport') {
+        continue;
+      }
+
+      final dynamic data = item['data'];
+      final Map<String, dynamic> parsedData = data is Map
+          ? Map<String, dynamic>.from(data)
+          : <String, dynamic>{};
+
+      plans.add(
+        _StoredTransportPlan(
+          backendIndex: i,
+          itemType: itemType,
+          data: parsedData,
+        ),
+      );
+    }
+
+    return plans;
+  }
+
+  String _transportPlanTitle(_StoredTransportPlan plan) {
+    final String name = plan.data['name']?.toString() ?? '';
+    if (name.trim().isNotEmpty) {
+      return name.trim();
+    }
+
+    switch (plan.itemType) {
+      case 'driving':
+      case 'drive':
+        return 'Driving Plan';
+      case 'undecided':
+        return 'Transportation Undecided';
+      default:
+        return 'Flight Plan';
+    }
+  }
+
+  String _transportPlanSubtitle(_StoredTransportPlan plan) {
+    final String there = <String>[
+      plan.data['departure_airport']?.toString() ?? '',
+      plan.data['arrival_airport']?.toString() ?? '',
+    ].where((String s) => s.trim().isNotEmpty).join(' → ');
+
+    final String thereTime = <String>[
+      plan.data['departure_time']?.toString() ?? '',
+      plan.data['arrival_time']?.toString() ?? '',
+    ].where((String s) => s.trim().isNotEmpty).join(' • ');
+
+    final String back = <String>[
+      plan.data['return_departure_airport']?.toString() ?? '',
+      plan.data['return_arrival_airport']?.toString() ?? '',
+    ].where((String s) => s.trim().isNotEmpty).join(' → ');
+
+    final String backTime = <String>[
+      plan.data['return_departure_time']?.toString() ?? '',
+      plan.data['return_arrival_time']?.toString() ?? '',
+    ].where((String s) => s.trim().isNotEmpty).join(' • ');
+
+    final String price = plan.data['price']?.toString() ?? '';
+    final String duration = plan.data['duration']?.toString() ?? '';
+
+    final List<String> lines = <String>[];
+    if (there.isNotEmpty) {
+      lines.add('There: $there');
+    }
+    if (thereTime.isNotEmpty) {
+      lines.add(thereTime);
+    }
+    if (back.isNotEmpty) {
+      lines.add('Back: $back');
+    }
+    if (backTime.isNotEmpty) {
+      lines.add(backTime);
+    }
+    if (duration.isNotEmpty || price.isNotEmpty) {
+      lines.add(
+        <String>[
+          duration,
+          price,
+        ].where((String s) => s.trim().isNotEmpty).join(' • '),
+      );
+    }
+
+    if (lines.isEmpty) {
+      return 'Saved transport plan';
+    }
+
+    return lines.join('\n');
+  }
+
+  Future<void> _deleteStoredTransportPlan(_StoredTransportPlan plan) async {
+    final int? userId = widget.userId;
+    if (userId == null || widget.trip.id == 'placeholder') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a trip and log in first.')),
+      );
+      return;
+    }
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Delete Transport Plan?'),
+          content: const Text('This will remove the saved transport plan.'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final Map<String, dynamic> response = await removeFromTrip(
+        userId,
+        widget.trip.id,
+        plan.backendIndex,
+      );
+      final String errorMessage = response['error']?.toString() ?? '';
+
+      if (!mounted) {
+        return;
+      }
+
+      if (errorMessage.trim().isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete plan: $errorMessage')),
+        );
+        return;
+      }
+
+      await widget.onTripUpdated();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Transport plan deleted.')));
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to delete plan: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _editStoredTransportPlan(_StoredTransportPlan plan) async {
+    final int? userId = widget.userId;
+    if (userId == null || widget.trip.id == 'placeholder') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a trip and log in first.')),
+      );
+      return;
+    }
+
+    String editedName = _transportPlanTitle(plan);
+    String editedThereRoute =
+        '${plan.data['departure_airport']?.toString() ?? ''} → ${plan.data['arrival_airport']?.toString() ?? ''}';
+    String editedThereTime =
+        '${plan.data['departure_time']?.toString() ?? ''} • ${plan.data['arrival_time']?.toString() ?? ''}';
+    String editedBackRoute =
+        '${plan.data['return_departure_airport']?.toString() ?? ''} → ${plan.data['return_arrival_airport']?.toString() ?? ''}';
+    String editedBackTime =
+        '${plan.data['return_departure_time']?.toString() ?? ''} • ${plan.data['return_arrival_time']?.toString() ?? ''}';
+    String editedDuration = plan.data['duration']?.toString() ?? '';
+    String editedPrice = plan.data['price']?.toString() ?? '';
+
+    final bool? save = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Edit Transport Plan'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                TextFormField(
+                  initialValue: editedName,
+                  onChanged: (String value) => editedName = value,
+                  decoration: const InputDecoration(labelText: 'Name'),
+                ),
+                TextFormField(
+                  initialValue: editedThereRoute,
+                  onChanged: (String value) => editedThereRoute = value,
+                  decoration: const InputDecoration(labelText: 'There Route'),
+                ),
+                TextFormField(
+                  initialValue: editedThereTime,
+                  onChanged: (String value) => editedThereTime = value,
+                  decoration: const InputDecoration(labelText: 'There Time'),
+                ),
+                TextFormField(
+                  initialValue: editedBackRoute,
+                  onChanged: (String value) => editedBackRoute = value,
+                  decoration: const InputDecoration(labelText: 'Back Route'),
+                ),
+                TextFormField(
+                  initialValue: editedBackTime,
+                  onChanged: (String value) => editedBackTime = value,
+                  decoration: const InputDecoration(labelText: 'Back Time'),
+                ),
+                TextFormField(
+                  initialValue: editedDuration,
+                  onChanged: (String value) => editedDuration = value,
+                  decoration: const InputDecoration(labelText: 'Duration'),
+                ),
+                TextFormField(
+                  initialValue: editedPrice,
+                  onChanged: (String value) => editedPrice = value,
+                  decoration: const InputDecoration(labelText: 'Price'),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (save != true) {
+      return;
+    }
+
+    final String thereValue = editedThereRoute.trim();
+    final List<String> thereParts = thereValue.split('→');
+    final String thereFrom = thereParts.isNotEmpty
+        ? thereParts.first.trim()
+        : '';
+    final String thereTo = thereParts.length > 1 ? thereParts[1].trim() : '';
+
+    final String thereTimeValue = editedThereTime.trim();
+    final List<String> thereTimeParts = thereTimeValue.split('•');
+    final String departTime = thereTimeParts.isNotEmpty
+        ? thereTimeParts.first.trim()
+        : '';
+    final String arriveTime = thereTimeParts.length > 1
+        ? thereTimeParts[1].trim()
+        : '';
+
+    final String backValue = editedBackRoute.trim();
+    final List<String> backParts = backValue.split('→');
+    final String backFrom = backParts.isNotEmpty ? backParts.first.trim() : '';
+    final String backTo = backParts.length > 1 ? backParts[1].trim() : '';
+
+    final String backTimeValue = editedBackTime.trim();
+    final List<String> backTimeParts = backTimeValue.split('•');
+    final String backDepartTime = backTimeParts.isNotEmpty
+        ? backTimeParts.first.trim()
+        : '';
+    final String backArriveTime = backTimeParts.length > 1
+        ? backTimeParts[1].trim()
+        : '';
+
+    final Map<String, dynamic> updatedData = <String, dynamic>{
+      ...plan.data,
+      'name': editedName.trim(),
+      'departure_airport': thereFrom,
+      'arrival_airport': thereTo,
+      'departure_time': departTime,
+      'arrival_time': arriveTime,
+      'return_departure_airport': backFrom,
+      'return_arrival_airport': backTo,
+      'return_departure_time': backDepartTime,
+      'return_arrival_time': backArriveTime,
+      'duration': editedDuration.trim(),
+      'price': editedPrice.trim(),
+    };
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final Map<String, dynamic> removeResponse = await removeFromTrip(
+        userId,
+        widget.trip.id,
+        plan.backendIndex,
+      );
+      final String removeError = removeResponse['error']?.toString() ?? '';
+      if (removeError.trim().isNotEmpty) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to edit plan: $removeError')),
+        );
+        return;
+      }
+
+      final Map<String, dynamic> addResponse = await addToTrip(
+        userId,
+        widget.trip.id,
+        <String, dynamic>{'type': plan.itemType, 'data': updatedData},
+      );
+      final String addError = addResponse['error']?.toString() ?? '';
+      if (addError.trim().isNotEmpty) {
+        await addToTrip(userId, widget.trip.id, <String, dynamic>{
+          'type': plan.itemType,
+          'data': plan.data,
+        });
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to edit plan: $addError')),
+        );
+        return;
+      }
+
+      await widget.onTripUpdated();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Transport plan updated.')));
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to edit plan: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveFlightToTrip(Map<String, dynamic> flight) async {
+    final int? userId = widget.userId;
+    if (userId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please log in first.')));
+      return;
+    }
+
+    if (widget.trip.id == 'placeholder') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a trip from Dashboard first.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final Map<String, dynamic> item = <String, dynamic>{
+        'type': 'flight',
+        'data': _flightItemData(flight),
+      };
+      final Map<String, dynamic> response = await addToTrip(
+        userId,
+        widget.trip.id,
+        item,
+      );
+      final String errorMessage = response['error']?.toString() ?? '';
+
+      if (!mounted) {
+        return;
+      }
+
+      if (errorMessage.trim().isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save flight: $errorMessage')),
+        );
+        return;
+      }
+
+      await widget.onTripUpdated();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Flight saved to trip.')));
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to save flight: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveRoundTripToTrip(
+    Map<String, dynamic> outboundFlight,
+    Map<String, dynamic> returnFlight,
+  ) async {
+    final int? userId = widget.userId;
+    if (userId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please log in first.')));
+      return;
+    }
+
+    if (widget.trip.id == 'placeholder') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a trip from Dashboard first.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final Map<String, dynamic> outboundData = _flightItemData(outboundFlight);
+      final Map<String, dynamic> returnData = _flightItemData(returnFlight);
+      final String outboundRoute =
+          '${outboundData['departure_airport']?.toString() ?? ''} → ${outboundData['arrival_airport']?.toString() ?? ''}';
+      final String returnRoute =
+          '${returnData['departure_airport']?.toString() ?? ''} → ${returnData['arrival_airport']?.toString() ?? ''}';
+
+      final Map<String, dynamic> item = <String, dynamic>{
+        'type': 'flight',
+        'data': <String, dynamic>{
+          ...outboundData,
+          'name':
+              '${outboundData['airline']?.toString() ?? 'Flight'} $outboundRoute ↔ $returnRoute',
+          'return_departure_time':
+              returnData['departure_time']?.toString() ?? '',
+          'return_arrival_time': returnData['arrival_time']?.toString() ?? '',
+          'return_departure_airport':
+              returnData['departure_airport']?.toString() ?? '',
+          'return_arrival_airport':
+              returnData['arrival_airport']?.toString() ?? '',
+          'round_trip': true,
+        },
+      };
+
+      final Map<String, dynamic> response = await addToTrip(
+        userId,
+        widget.trip.id,
+        item,
+      );
+      final String errorMessage = response['error']?.toString() ?? '';
+
+      if (!mounted) {
+        return;
+      }
+
+      if (errorMessage.trim().isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save round trip: $errorMessage')),
+        );
+        return;
+      }
+
+      await widget.onTripUpdated();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Round-trip flight saved.')));
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to save round trip: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Widget _modeCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? const Color(0xFF2196A6) : const Color(0xFFE8E0D5),
+            width: selected ? 1.6 : 1,
+          ),
+        ),
+        child: Row(
+          children: <Widget>[
+            Icon(
+              icon,
+              color: selected
+                  ? const Color(0xFF2196A6)
+                  : const Color(0xFF7A86B5),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A2B3C),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: const TextStyle(color: Colors.black54)),
+                ],
+              ),
+            ),
+            const Icon(Icons.add_rounded, color: Color(0xFF61708C)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _classLabel(String code) {
+    switch (code) {
+      case '1':
+        return 'Economy';
+      case '2':
+        return 'Premium Economy';
+      case '3':
+        return 'Business';
+      case '4':
+        return 'First';
+      default:
+        return 'Economy';
+    }
+  }
+
+  Widget _flightForm() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE8E0D5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'Search for a flight',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 18,
+              color: Color(0xFF1A2B3C),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: TextField(
+                  controller: _fromController,
+                  textCapitalization: TextCapitalization.characters,
+                  maxLength: 3,
+                  decoration: const InputDecoration(
+                    counterText: '',
+                    labelText: 'From',
+                    hintText: 'MCO',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: _toController,
+                  textCapitalization: TextCapitalization.characters,
+                  maxLength: 3,
+                  decoration: const InputDecoration(
+                    counterText: '',
+                    labelText: 'To',
+                    hintText: 'JFK',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickDate(isReturnDate: false),
+                  icon: const Icon(Icons.calendar_month_rounded),
+                  label: Text('Depart: ${_formatDate(_departDate)}'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _roundTrip
+                      ? () => _pickDate(isReturnDate: true)
+                      : null,
+                  icon: const Icon(Icons.calendar_today_rounded),
+                  label: Text('Return: ${_formatDate(_returnDate)}'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: DropdownButtonFormField<bool>(
+                  value: _roundTrip,
+                  decoration: const InputDecoration(labelText: 'Trip Type'),
+                  items: const <DropdownMenuItem<bool>>[
+                    DropdownMenuItem<bool>(
+                      value: true,
+                      child: Text('Round Trip'),
+                    ),
+                    DropdownMenuItem<bool>(
+                      value: false,
+                      child: Text('One Way'),
+                    ),
+                  ],
+                  onChanged: (bool? value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() {
+                      _roundTrip = value;
+                      if (!_roundTrip) {
+                        _returnDate = null;
+                        _returnFlightResults = <Map<String, dynamic>>[];
+                        _selectedOutboundFlight = null;
+                      }
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: DropdownButtonFormField<int>(
+                  value: _adults,
+                  decoration: const InputDecoration(labelText: 'Travelers'),
+                  items: List<DropdownMenuItem<int>>.generate(
+                    6,
+                    (int index) => DropdownMenuItem<int>(
+                      value: index + 1,
+                      child: Text('${index + 1} Adult${index == 0 ? '' : 's'}'),
+                    ),
+                  ),
+                  onChanged: (int? value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() {
+                      _adults = value;
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value: _travelClass,
+            decoration: const InputDecoration(labelText: 'Cabin Class'),
+            items: const <String>['1', '2', '3', '4']
+                .map(
+                  (String code) => DropdownMenuItem<String>(
+                    value: code,
+                    child: Text(_classLabel(code)),
+                  ),
+                )
+                .toList(),
+            onChanged: (String? value) {
+              if (value == null) {
+                return;
+              }
+              setState(() {
+                _travelClass = value;
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _isSearching ? null : _searchForFlights,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF3F569B),
+              ),
+              child: Text(_isSearching ? 'Searching...' : 'Find Flights'),
+            ),
+          ),
+          if (_flightError != null) ...<Widget>[
+            const SizedBox(height: 10),
+            Text(
+              _flightError!,
+              style: const TextStyle(color: Color(0xFFB3261E)),
+            ),
+          ],
+          if (_flightResults.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 14),
+            const Text(
+              'Flight Options',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                color: Color(0xFF1A2B3C),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ..._flightResults.map((Map<String, dynamic> flight) {
+              final Map<String, dynamic> data = _flightItemData(flight);
+              final String title = data['name']?.toString() ?? 'Flight Option';
+              final String outboundDetail = <String>[
+                'There ${data['departure_airport']?.toString() ?? ''} → ${data['arrival_airport']?.toString() ?? ''}',
+                data['departure_time']?.toString() ?? '',
+                data['arrival_time']?.toString() ?? '',
+              ].where((String part) => part.trim().isNotEmpty).join(' • ');
+              final bool hasReturnLeg = data['has_return_leg'] == true;
+              final String returnDetail = hasReturnLeg
+                  ? <String>[
+                      'Back ${data['return_departure_airport']?.toString() ?? ''} → ${data['return_arrival_airport']?.toString() ?? ''}',
+                      data['return_departure_time']?.toString() ?? '',
+                      data['return_arrival_time']?.toString() ?? '',
+                    ].where((String part) => part.trim().isNotEmpty).join(' • ')
+                  : '';
+              final String extraDetail = <String>[
+                data['duration']?.toString() ?? '',
+                data['price']?.toString() ?? '',
+              ].where((String part) => part.trim().isNotEmpty).join(' • ');
+
+              final String detail = <String>[
+                outboundDetail,
+                if (returnDetail.isNotEmpty) returnDetail,
+                if (extraDetail.isNotEmpty) extraDetail,
+              ].join('\n');
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7FAFF),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFDDE6F5)),
+                ),
+                child: ListTile(
+                  title: Text(title),
+                  subtitle: detail.isEmpty ? null : Text(detail),
+                  trailing: FilledButton(
+                    onPressed: _isSaving || _isSearching
+                        ? null
+                        : () {
+                            if (_roundTrip) {
+                              _loadReturnFlights(flight);
+                            } else {
+                              _saveFlightToTrip(flight);
+                            }
+                          },
+                    child: Text(
+                      _isSaving
+                          ? 'Saving...'
+                          : (_roundTrip ? 'Select' : 'Save'),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+          if (_roundTrip && _selectedOutboundFlight != null) ...<Widget>[
+            const SizedBox(height: 14),
+            const Text(
+              'Return Flight Options',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                color: Color(0xFF1A2B3C),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (_returnFlightResults.isEmpty && _isSearching)
+              const ListTile(
+                tileColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(14)),
+                ),
+                title: Text('Loading return flights...'),
+              )
+            else
+              ..._returnFlightResults.map((Map<String, dynamic> returnFlight) {
+                final Map<String, dynamic> returnData = _flightItemData(
+                  returnFlight,
+                );
+                final String returnTitle =
+                    '${returnData['airline']?.toString() ?? 'Flight'} ${returnData['departure_airport']?.toString() ?? ''} → ${returnData['arrival_airport']?.toString() ?? ''}';
+                final String returnDetail = <String>[
+                  returnData['departure_time']?.toString() ?? '',
+                  returnData['arrival_time']?.toString() ?? '',
+                  returnData['duration']?.toString() ?? '',
+                  returnData['price']?.toString() ?? '',
+                ].where((String part) => part.trim().isNotEmpty).join(' • ');
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7FAFF),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFDDE6F5)),
+                  ),
+                  child: ListTile(
+                    title: Text(returnTitle),
+                    subtitle: returnDetail.isEmpty ? null : Text(returnDetail),
+                    trailing: FilledButton(
+                      onPressed: _isSaving
+                          ? null
+                          : () => _saveRoundTripToTrip(
+                              _selectedOutboundFlight!,
+                              returnFlight,
+                            ),
+                      child: Text(_isSaving ? 'Saving...' : 'Save Trip'),
+                    ),
+                  ),
+                );
+              }),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<_StoredTransportPlan> storedPlans = _storedTransportPlans();
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -2948,7 +4032,7 @@ class PlannerScreen extends StatelessWidget {
           child: Stack(
             children: <Widget>[
               Positioned.fill(
-                child: TravelImage(trip.image, fit: BoxFit.cover),
+                child: TravelImage(widget.trip.image, fit: BoxFit.cover),
               ),
               Container(
                 padding: const EdgeInsets.all(16),
@@ -2963,7 +4047,7 @@ class PlannerScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     const Text(
-                      'Trip Planner',
+                      'Transportation Plans',
                       style: TextStyle(
                         color: Colors.white70,
                         fontWeight: FontWeight.w600,
@@ -2971,7 +4055,7 @@ class PlannerScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      trip.destination,
+                      widget.trip.destination,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 28,
@@ -2980,12 +4064,12 @@ class PlannerScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${trip.location} | ${trip.dates}',
+                      '${widget.trip.location} | ${widget.trip.dates}',
                       style: const TextStyle(color: Colors.white70),
                     ),
                     const SizedBox(height: 10),
                     FilledButton.icon(
-                      onPressed: onOpenTravelMode,
+                      onPressed: widget.onOpenTravelMode,
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFFF4845F),
                         foregroundColor: Colors.white,
@@ -2999,133 +4083,158 @@ class PlannerScreen extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE8E0D5)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Text(
-                'Budget Tracker',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 6),
-              Text('Estimated: \$${trip.estimatedBudget.toStringAsFixed(0)}'),
-              Text('Planned spend: \$${total.toStringAsFixed(0)}'),
-              const SizedBox(height: 8),
-              LinearProgressIndicator(
-                value: progress,
-                borderRadius: BorderRadius.circular(20),
-                minHeight: 8,
-                color: const Color(0xFFF4845F),
-                backgroundColor: const Color(0xFFECE4DA),
-              ),
-            ],
+        const SizedBox(height: 14),
+        const Text(
+          'Getting There',
+          style: TextStyle(
+            fontSize: 13,
+            letterSpacing: 0.8,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF7A86B5),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        _modeCard(
+          icon: Icons.flight_takeoff_rounded,
+          title: 'Search for a flight',
+          subtitle: 'Use live flight results and save an option to this trip.',
+          selected: _choice == TransportationChoice.flying,
+          onTap: () {
+            setState(() {
+              _choice = TransportationChoice.flying;
+            });
+          },
+        ),
+        _modeCard(
+          icon: Icons.directions_car_rounded,
+          title: "I'm driving",
+          subtitle: 'Track this as your transportation choice.',
+          selected: _choice == TransportationChoice.driving,
+          onTap: () {
+            setState(() {
+              _choice = TransportationChoice.driving;
+            });
+          },
+        ),
+        _modeCard(
+          icon: Icons.self_improvement_rounded,
+          title: "I'll figure it out",
+          subtitle: 'Mark transportation as undecided for now.',
+          selected: _choice == TransportationChoice.undecided,
+          onTap: () {
+            setState(() {
+              _choice = TransportationChoice.undecided;
+            });
+          },
+        ),
+        const SizedBox(height: 14),
         const Text(
-          'Itinerary Builder',
+          'Stored Transport Plans',
           style: TextStyle(
-            fontSize: 22,
+            fontSize: 16,
             fontWeight: FontWeight.w800,
             color: Color(0xFF1A2B3C),
           ),
         ),
         const SizedBox(height: 8),
-        if (!hasItems)
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE8E0D5)),
+        if (storedPlans.isEmpty)
+          const ListTile(
+            tileColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(14)),
             ),
-            child: const Text(
-              'This trip has no saved backend items yet. Add places or events from Explore to build the itinerary.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black54, height: 1.4),
-            ),
+            leading: Icon(Icons.info_outline_rounded, color: Color(0xFF61708C)),
+            title: Text('No stored transport plans yet.'),
+            subtitle: Text('Save a flight option to manage it here.'),
           )
         else
-          ...itinerary.map((ItineraryDay day) {
+          ...storedPlans.map((_StoredTransportPlan plan) {
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFFE8E0D5)),
               ),
-              child: ExpansionTile(
-                tilePadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 6,
+              child: ListTile(
+                leading: Icon(
+                  plan.itemType == 'flight'
+                      ? Icons.flight_rounded
+                      : Icons.alt_route_rounded,
+                  color: const Color(0xFF3F569B),
                 ),
-                title: Text(
-                  day.label,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                title: Text(_transportPlanTitle(plan)),
+                subtitle: Text(_transportPlanSubtitle(plan)),
+                isThreeLine: true,
+                trailing: Wrap(
+                  spacing: 8,
+                  children: <Widget>[
+                    IconButton(
+                      tooltip: 'Edit',
+                      onPressed: _isSaving
+                          ? null
+                          : () => _editStoredTransportPlan(plan),
+                      icon: const Icon(Icons.edit_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'Delete',
+                      onPressed: _isSaving
+                          ? null
+                          : () => _deleteStoredTransportPlan(plan),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                    ),
+                  ],
                 ),
-                subtitle: Text(day.date),
-                childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                children: <Widget>[
-                  ...day.activities.map((PlannedActivity activity) {
-                    return ListTile(
-                      dense: true,
-                      leading: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: activity.category.color.withValues(
-                            alpha: 0.12,
-                          ),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          activity.category.icon,
-                          color: activity.category.color,
-                          size: 18,
-                        ),
-                      ),
-                      title: Text(activity.title),
-                      subtitle: Text(
-                        activity.details.isNotEmpty
-                            ? '${activity.time} • ${activity.details}'
-                            : activity.time,
-                      ),
-                      trailing: Text(
-                        activity.cost == 0
-                            ? 'Saved'
-                            : '\$${activity.cost.toStringAsFixed(0)}',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    );
-                  }),
-                ],
               ),
             );
           }),
+        if (_choice == TransportationChoice.flying) ...<Widget>[
+          _flightForm(),
+        ] else if (_choice == TransportationChoice.driving) ...<Widget>[
+          const SizedBox(height: 8),
+          const ListTile(
+            tileColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+            ),
+            leading: Icon(
+              Icons.directions_car_rounded,
+              color: Color(0xFF2196A6),
+            ),
+            title: Text('Driving selected'),
+            subtitle: Text(
+              'You can continue planning and update this anytime.',
+            ),
+          ),
+        ] else if (_choice == TransportationChoice.undecided) ...<Widget>[
+          const SizedBox(height: 8),
+          const ListTile(
+            tileColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+            ),
+            leading: Icon(Icons.schedule_rounded, color: Color(0xFF61708C)),
+            title: Text('Transportation undecided'),
+            subtitle: Text('Choose flying later when you are ready to search.'),
+          ),
+        ],
       ],
     );
   }
 }
 
-// Travel-mode details for itinerary, hotel, flights, reservations, and essentials.
+// Travel-mode details for itinerary, hotel, flights, housing, and essentials.
 class TripDetailsScreen extends StatefulWidget {
   const TripDetailsScreen({
     super.key,
     required this.trip,
     required this.itinerary,
-    required this.onBackToPlanner,
+    required this.onBackToTransport,
   });
 
   final Trip trip;
   final List<ItineraryDay> itinerary;
-  final VoidCallback onBackToPlanner;
+  final VoidCallback onBackToTransport;
 
   @override
   State<TripDetailsScreen> createState() => _TripDetailsScreenState();
@@ -3172,7 +4281,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
                     Row(
                       children: <Widget>[
                         IconButton.filledTonal(
-                          onPressed: widget.onBackToPlanner,
+                          onPressed: widget.onBackToTransport,
                           icon: const Icon(Icons.arrow_back_rounded),
                         ),
                         const Spacer(),
@@ -3209,7 +4318,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
             tabs: const <Tab>[
               Tab(text: 'Itinerary'),
               Tab(text: 'Travel Info'),
-              Tab(text: 'Reservations'),
+              Tab(text: 'Housing'),
               Tab(text: 'Essentials'),
             ],
           ),
@@ -3220,7 +4329,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
             children: <Widget>[
               _itineraryTab(),
               _travelInfoTab(),
-              _reservationsTab(),
+              _housingTab(),
               _essentialsTab(),
             ],
           ),
@@ -3299,16 +4408,10 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
   }
 
   Widget _travelInfoTab() {
-    // Hotel and flight cards are grouped here so travelers can find logistics quickly.
+    // Flight details are grouped here so travelers can find logistics quickly.
     return ListView(
       padding: const EdgeInsets.all(14),
       children: <Widget>[
-        _infoCard(
-          title: 'Hotel Address',
-          content: widget.trip.hotelAddress,
-          icon: Icons.hotel_rounded,
-        ),
-        const SizedBox(height: 10),
         _infoCard(
           title: 'Flight Info',
           content: widget.trip.flightInfo,
@@ -3318,22 +4421,39 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
     );
   }
 
-  Widget _reservationsTab() {
-    // Reservation list acts as a quick confirmation checklist.
+  Widget _housingTab() {
+    // Housing list shows only saved hotels/resorts for this trip.
+    if (widget.trip.housing.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.all(14),
+        children: const <Widget>[
+          ListTile(
+            tileColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+            ),
+            leading: Icon(Icons.hotel_rounded, color: Color(0xFF5B8A5E)),
+            title: Text('No housing saved yet'),
+          ),
+        ],
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.all(14),
-      children: widget.trip.reservations
+      children: widget.trip.housing
           .map(
-            (String reservation) => ListTile(
+            (HousingStay housing) => ListTile(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
               tileColor: Colors.white,
               leading: const Icon(
-                Icons.check_circle_rounded,
+                Icons.hotel_rounded,
                 color: Color(0xFF5B8A5E),
               ),
-              title: Text(reservation),
+              title: Text(housing.name),
+              subtitle: housing.address.isEmpty ? null : Text(housing.address),
             ),
           )
           .toList(),
@@ -3411,47 +4531,6 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
 }
 
 // Small reusable card for dashboard stats.
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    // Small numeric summary tile shown at the top of the dashboard.
-    return Container(
-      width: 112,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE8E0D5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Icon(icon, color: const Color(0xFF2196A6)),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-          ),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class Trip {
   // Core trip record shared across dashboard, planner, and travel mode screens.
   Trip({
@@ -3463,7 +4542,7 @@ class Trip {
     required this.estimatedBudget,
     required this.flightInfo,
     required this.hotelAddress,
-    required this.reservations,
+    required this.housing,
     this.backendItems,
   });
 
@@ -3475,9 +4554,16 @@ class Trip {
   final double estimatedBudget;
   final String flightInfo;
   final String hotelAddress;
-  final List<String> reservations;
+  final List<HousingStay> housing;
   // Store the raw backend items for finding indices during remove operations
   final List<dynamic>? backendItems;
+}
+
+class HousingStay {
+  const HousingStay({required this.name, required this.address});
+
+  final String name;
+  final String address;
 }
 
 class ExplorePlaceResult {
