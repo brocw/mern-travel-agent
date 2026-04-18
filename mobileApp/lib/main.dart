@@ -50,7 +50,7 @@ class _MyAppState extends State<MyApp> {
         _isAuthBootstrapping = false;
         if (!_isLoggedIn) {
           _trips.clear();
-          _activeTripIndex = 0;
+          _activeTripIndex = null;
         }
       });
 
@@ -68,13 +68,20 @@ class _MyAppState extends State<MyApp> {
         _currentUserId = null;
         _isAuthBootstrapping = false;
         _trips.clear();
-        _activeTripIndex = 0;
+        _activeTripIndex = null;
       });
     }
   }
 
   Future<void> _fetchTripsFromBackend(int userId) async {
     try {
+      final String? previouslySelectedTripId =
+          (_activeTripIndex != null &&
+              _activeTripIndex! >= 0 &&
+              _activeTripIndex! < _trips.length)
+          ? _trips[_activeTripIndex!].id
+          : null;
+
       final response = await getTrips(userId);
       if (!mounted) {
         return;
@@ -175,10 +182,21 @@ class _MyAppState extends State<MyApp> {
       setState(() {
         _trips.clear();
         _trips.addAll(fetchedTrips);
+
+        if (previouslySelectedTripId == null) {
+          _activeTripIndex = null;
+        } else {
+          final int restoredIndex = _trips.indexWhere(
+            (Trip trip) => trip.id == previouslySelectedTripId,
+          );
+          _activeTripIndex = restoredIndex == -1 ? null : restoredIndex;
+        }
       });
       print('Loaded ${fetchedTrips.length} trips from backend');
 
-      if (_trips.isNotEmpty && _activeTrip.id != 'placeholder') {
+      if (_activeTripIndex != null &&
+          _activeTripIndex! >= 0 &&
+          _activeTripIndex! < _trips.length) {
         await _loadExplorePlacesForLocation(_activeTrip.location);
       } else if (mounted) {
         setState(() {
@@ -229,7 +247,7 @@ class _MyAppState extends State<MyApp> {
     return 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80';
   }
 
-  // Live explore state backed by the searchLocation/getPlaces API flow.
+  // Live explore state backed by the searchLocation/getPlaces/getEvents API flow.
   bool _exploreLoading = false;
   String? _exploreError;
   String? _exploreLocationLabel;
@@ -237,9 +255,9 @@ class _MyAppState extends State<MyApp> {
 
   // Navigation and shared trip state for the entire app.
   int _selectedTab = 0;
-  int _activeTripIndex = 0;
+  int? _activeTripIndex;
   String _landingQuery = '';
-  Set<String> _selectedFilters = <String>{};
+  String _selectedExploreCategory = 'places';
   final Set<String> _savedTrips = <String>{'trip-1', 'trip-3'};
   final Set<String> _addedDestinationIds = <String>{};
 
@@ -315,11 +333,14 @@ class _MyAppState extends State<MyApp> {
 
   Trip get _activeTrip {
     // Return a placeholder trip if no trips exist yet
-    if (_trips.isEmpty) {
+    if (_trips.isEmpty ||
+        _activeTripIndex == null ||
+        _activeTripIndex! < 0 ||
+        _activeTripIndex! >= _trips.length) {
       return Trip(
         id: 'placeholder',
         destination: 'No Trip Selected',
-        location: 'Create a trip to get started',
+        location: 'Select a trip from Dashboard to start exploring',
         dates: 'No dates',
         image:
             'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
@@ -329,11 +350,7 @@ class _MyAppState extends State<MyApp> {
         reservations: const <String>[],
       );
     }
-    // Fallback to the first trip so the planner/details screens always have content.
-    if (_activeTripIndex < 0 || _activeTripIndex >= _trips.length) {
-      return _trips.first;
-    }
-    return _trips[_activeTripIndex];
+    return _trips[_activeTripIndex!];
   }
 
   void _goToTab(int index) {
@@ -409,7 +426,7 @@ class _MyAppState extends State<MyApp> {
         _registrationNotice = null;
         _selectedTab = 0;
         _trips.clear();
-        _activeTripIndex = 0;
+        _activeTripIndex = null;
       });
 
       await _fetchTripsFromBackend(userId);
@@ -427,7 +444,7 @@ class _MyAppState extends State<MyApp> {
       _currentUserId = null;
       _selectedTab = 0;
       _trips.clear();
-      _activeTripIndex = 0;
+      _activeTripIndex = null;
     });
   }
 
@@ -450,7 +467,7 @@ class _MyAppState extends State<MyApp> {
       _explorePlaces = <ExplorePlaceResult>[];
       _exploreLocationLabel = null;
       _trips.clear();
-      _activeTripIndex = 0;
+      _activeTripIndex = null;
     });
 
     _showGlobalSnackBar('Session expired. Please log in again.');
@@ -489,14 +506,14 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  // Home and explore filters update local UI state only.
-  void _toggleFilter(String filterId) {
+  // Explore uses a single active category tab to mirror the website UX.
+  void _selectExploreCategory(String categoryId) {
+    if (_selectedExploreCategory == categoryId) {
+      return;
+    }
+
     setState(() {
-      if (_selectedFilters.contains(filterId)) {
-        _selectedFilters.remove(filterId);
-      } else {
-        _selectedFilters.add(filterId);
-      }
+      _selectedExploreCategory = categoryId;
     });
   }
 
@@ -536,32 +553,146 @@ class _MyAppState extends State<MyApp> {
       final double lng = (location['lng'] as num).toDouble();
       final String resolvedLocation =
           location['name']?.toString() ?? normalizedLocation;
-      final Map<String, dynamic> placesResponse = await getPlaces(lat, lng);
-      final List<dynamic> rawPlaces =
-          (placesResponse['places'] as List<dynamic>?) ?? <dynamic>[];
 
-      final List<ExplorePlaceResult> places = rawPlaces.map<ExplorePlaceResult>(
-        (dynamic raw) {
-          final Map<String, dynamic> placeMap = raw as Map<String, dynamic>;
-          return ExplorePlaceResult(
-            id:
-                placeMap['placeId']?.toString() ??
-                placeMap['name']?.toString() ??
-                '',
-            name: placeMap['name']?.toString() ?? 'Unknown place',
-            location: placeMap['address']?.toString() ?? resolvedLocation,
-            image: placeMap['image']?.toString() ?? '',
-            rating: (placeMap['rating'] as num?)?.toDouble(),
-            type: placeMap['type']?.toString() ?? 'place',
-            lat: (placeMap['lat'] as num?)?.toDouble(),
-            lng: (placeMap['lng'] as num?)?.toDouble(),
-            address: placeMap['address']?.toString(),
-            date: placeMap['date']?.toString(),
-            venue: placeMap['venue']?.toString(),
-            ticketUrl: placeMap['ticketUrl']?.toString(),
-          );
-        },
-      ).toList();
+      final List<dynamic> responses =
+          await Future.wait<dynamic>(<Future<dynamic>>[
+            getPlaces(lat, lng, type: 'all'),
+            getPlaces(lat, lng, type: 'lodging'),
+            getEvents(resolvedLocation, '', ''),
+          ]);
+
+      final Map<String, dynamic> allPlacesResponse =
+          responses[0] as Map<String, dynamic>;
+      final Map<String, dynamic> hotelsResponse =
+          responses[1] as Map<String, dynamic>;
+      final Map<String, dynamic> eventsResponse =
+          responses[2] as Map<String, dynamic>;
+
+      final List<dynamic> rawAllPlaces =
+          (allPlacesResponse['places'] as List<dynamic>?) ?? <dynamic>[];
+      final List<dynamic> rawHotels =
+          (hotelsResponse['places'] as List<dynamic>?) ?? <dynamic>[];
+      final List<dynamic> rawEvents =
+          (eventsResponse['events'] as List<dynamic>?) ?? <dynamic>[];
+
+      final Map<String, ExplorePlaceResult> mergedById =
+          <String, ExplorePlaceResult>{};
+
+      void addPlaceResult(dynamic raw, {String? forcedType}) {
+        if (raw is! Map) {
+          return;
+        }
+
+        final Map<String, dynamic> placeMap = Map<String, dynamic>.from(raw);
+        final String generatedId =
+            placeMap['placeId']?.toString() ??
+            '${placeMap['name']?.toString() ?? 'place'}-${placeMap['address']?.toString() ?? resolvedLocation}-${forcedType ?? placeMap['type']?.toString() ?? 'place'}';
+        if (generatedId.trim().isEmpty) {
+          return;
+        }
+
+        mergedById[generatedId] = ExplorePlaceResult(
+          id: generatedId,
+          name: placeMap['name']?.toString() ?? 'Unknown place',
+          location: placeMap['address']?.toString() ?? resolvedLocation,
+          image: placeMap['image']?.toString() ?? '',
+          rating: (placeMap['rating'] as num?)?.toDouble(),
+          type: forcedType ?? placeMap['type']?.toString() ?? 'place',
+          lat: (placeMap['lat'] as num?)?.toDouble(),
+          lng: (placeMap['lng'] as num?)?.toDouble(),
+          address: placeMap['address']?.toString(),
+          date: placeMap['date']?.toString(),
+          venue: placeMap['venue']?.toString(),
+          ticketUrl: placeMap['ticketUrl']?.toString(),
+        );
+      }
+
+      void addEventResult(dynamic raw) {
+        if (raw is! Map) {
+          return;
+        }
+
+        final Map<String, dynamic> eventMap = Map<String, dynamic>.from(raw);
+
+        String resolveEventImage(Map<String, dynamic> source) {
+          final dynamic directImage = source['image'];
+          if (directImage is String && directImage.trim().isNotEmpty) {
+            return directImage.trim();
+          }
+          if (directImage is Map) {
+            final dynamic directImageUrl = directImage['url'];
+            if (directImageUrl is String && directImageUrl.trim().isNotEmpty) {
+              return directImageUrl.trim();
+            }
+          }
+
+          final dynamic rawImages = source['images'];
+          if (rawImages is List) {
+            for (final dynamic rawImageEntry in rawImages) {
+              if (rawImageEntry is String && rawImageEntry.trim().isNotEmpty) {
+                return rawImageEntry.trim();
+              }
+              if (rawImageEntry is Map) {
+                final dynamic candidateUrl =
+                    rawImageEntry['url'] ?? rawImageEntry['image'];
+                if (candidateUrl is String && candidateUrl.trim().isNotEmpty) {
+                  return candidateUrl.trim();
+                }
+              }
+            }
+          }
+
+          return '';
+        }
+
+        final String name = eventMap['name']?.toString() ?? 'Unknown event';
+        final String date = eventMap['date']?.toString() ?? '';
+        final String venue = eventMap['venue']?.toString() ?? resolvedLocation;
+        final String generatedId =
+            eventMap['id']?.toString() ?? '$name-$date-$venue-event';
+        final String resolvedImage = resolveEventImage(eventMap);
+        if (generatedId.trim().isEmpty) {
+          return;
+        }
+
+        mergedById[generatedId] = ExplorePlaceResult(
+          id: generatedId,
+          name: name,
+          location: venue,
+          image: resolvedImage,
+          type: 'event',
+          date: date.isEmpty ? null : date,
+          venue: venue,
+          ticketUrl:
+              eventMap['ticketUrl']?.toString() ?? eventMap['url']?.toString(),
+        );
+      }
+
+      for (final dynamic rawPlace in rawAllPlaces) {
+        addPlaceResult(rawPlace);
+      }
+      for (final dynamic rawHotel in rawHotels) {
+        addPlaceResult(rawHotel, forcedType: 'lodging');
+      }
+      for (final dynamic rawEvent in rawEvents) {
+        addEventResult(rawEvent);
+      }
+
+      final List<ExplorePlaceResult> places = mergedById.values.toList();
+
+      final List<String> responseErrors = <String>[];
+      final String? allPlacesError = allPlacesResponse['error']?.toString();
+      final String? hotelsError = hotelsResponse['error']?.toString();
+      final String? eventsError = eventsResponse['error']?.toString();
+      if (allPlacesError != null && allPlacesError.trim().isNotEmpty) {
+        responseErrors.add(allPlacesError);
+      }
+      if (hotelsError != null && hotelsError.trim().isNotEmpty) {
+        responseErrors.add(hotelsError);
+      }
+      if (eventsError != null && eventsError.trim().isNotEmpty) {
+        responseErrors.add(eventsError);
+      }
 
       if (!mounted) {
         return;
@@ -572,9 +703,9 @@ class _MyAppState extends State<MyApp> {
         _exploreLocationLabel = resolvedLocation;
         _explorePlaces = places;
         _exploreError = places.isEmpty
-            ? (placesResponse['error']?.toString().isNotEmpty == true
-                  ? placesResponse['error'].toString()
-                  : 'No places found for this location.')
+            ? (responseErrors.isNotEmpty
+                  ? responseErrors.join(' | ')
+                  : 'No places, hotels, or events found for this location.')
             : null;
       });
     } catch (e) {
@@ -929,15 +1060,12 @@ class _MyAppState extends State<MyApp> {
 
       // Set the newly created trip as active
       setState(() {
-        if (_trips.isNotEmpty) {
-          _activeTripIndex = _trips.length - 1;
-          _selectedTab = 2; // Switch to explore tab
-        }
+        _selectedTab = 1;
       });
 
-      await _loadExplorePlacesForLocation(_activeTrip.location);
-
-      _showGlobalSnackBar('Trip created successfully!');
+      _showGlobalSnackBar(
+        'Trip created successfully! Select it from the dashboard to load explore results.',
+      );
     } catch (e) {
       final bool handled = await _handleSessionExpired(e);
       if (handled) {
@@ -1025,18 +1153,14 @@ class _MyAppState extends State<MyApp> {
 
       setState(() {
         if (_trips.isEmpty) {
-          _activeTripIndex = 0;
+          _activeTripIndex = null;
           return;
         }
 
-        if (_activeTripIndex >= _trips.length) {
-          _activeTripIndex = _trips.length - 1;
+        if (_activeTripIndex != null && _activeTripIndex! >= _trips.length) {
+          _activeTripIndex = null;
         }
       });
-
-      if (_trips.isNotEmpty && _activeTrip.id != 'placeholder') {
-        await _loadExplorePlacesForLocation(_activeTrip.location);
-      }
 
       _showGlobalSnackBar('Trip deleted successfully.');
     } catch (e) {
@@ -1062,6 +1186,9 @@ class _MyAppState extends State<MyApp> {
 
     setState(() {
       _activeTripIndex = selectedIndex;
+      _selectedTab = 2;
+      _exploreLoading = true;
+      _exploreError = null;
     });
 
     _loadExplorePlacesForLocation(trip.location);
@@ -1423,9 +1550,7 @@ class _MyAppState extends State<MyApp> {
                       onStartPlanning: () => _goToTab(3),
                       onQuickFilterTap: (String filterId) {
                         _goToTab(2);
-                        setState(() {
-                          _selectedFilters = <String>{filterId};
-                        });
+                        _selectExploreCategory('places');
                       },
                     ),
                     DashboardScreen(
@@ -1441,13 +1566,8 @@ class _MyAppState extends State<MyApp> {
                       isLoading: _exploreLoading,
                       errorMessage: _exploreError,
                       locationLabel: _exploreLocationLabel,
-                      selectedFilters: _selectedFilters,
-                      onToggleFilter: _toggleFilter,
-                      onClearFilters: () {
-                        setState(() {
-                          _selectedFilters.clear();
-                        });
-                      },
+                      selectedCategory: _selectedExploreCategory,
+                      onSelectCategory: _selectExploreCategory,
                       places: _explorePlaces,
                       addedDestinationIds: _addedDestinationIds,
                       onToggleAddDestination: _toggleAddDestination,
@@ -2420,9 +2540,8 @@ class ExploreScreen extends StatelessWidget {
     required this.isLoading,
     required this.errorMessage,
     required this.locationLabel,
-    required this.selectedFilters,
-    required this.onToggleFilter,
-    required this.onClearFilters,
+    required this.selectedCategory,
+    required this.onSelectCategory,
     required this.places,
     required this.addedDestinationIds,
     required this.onToggleAddDestination,
@@ -2431,20 +2550,29 @@ class ExploreScreen extends StatelessWidget {
   final bool isLoading;
   final String? errorMessage;
   final String? locationLabel;
-  final Set<String> selectedFilters;
-  final ValueChanged<String> onToggleFilter;
-  final VoidCallback onClearFilters;
+  final String selectedCategory;
+  final ValueChanged<String> onSelectCategory;
   final List<ExplorePlaceResult> places;
   final Set<String> addedDestinationIds;
   final ValueChanged<ExplorePlaceResult> onToggleAddDestination;
 
   @override
   Widget build(BuildContext context) {
+    final Map<String, int> counts = <String, int>{
+      'places': 0,
+      'hotels': 0,
+      'events': 0,
+      'flights': 0,
+    };
+    for (final ExplorePlaceResult place in places) {
+      counts[_resultCategory(place)] =
+          (counts[_resultCategory(place)] ?? 0) + 1;
+    }
+
     final List<ExplorePlaceResult> filtered = places.where((
       ExplorePlaceResult place,
     ) {
-      return selectedFilters.isEmpty ||
-          selectedFilters.any((String filter) => _matchesFilter(place, filter));
+      return _resultCategory(place) == selectedCategory;
     }).toList();
 
     return ListView(
@@ -2460,21 +2588,34 @@ class ExploreScreen extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         SizedBox(
-          height: 42,
+          height: 44,
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: <Widget>[
-              _filterChip('beaches'),
-              _filterChip('hiking'),
-              _filterChip('food'),
-              _filterChip('nightlife'),
-              _filterChip('museums'),
-              _filterChip('snorkeling'),
-              if (selectedFilters.isNotEmpty)
-                TextButton(
-                  onPressed: onClearFilters,
-                  child: const Text('Clear'),
-                ),
+              _categoryChip(
+                id: 'places',
+                icon: Icons.place_rounded,
+                label: 'Places',
+                count: counts['places'] ?? 0,
+              ),
+              _categoryChip(
+                id: 'hotels',
+                icon: Icons.hotel_rounded,
+                label: 'Hotels',
+                count: counts['hotels'] ?? 0,
+              ),
+              _categoryChip(
+                id: 'events',
+                icon: Icons.event_rounded,
+                label: 'Events',
+                count: counts['events'] ?? 0,
+              ),
+              _categoryChip(
+                id: 'flights',
+                icon: Icons.flight_takeoff_rounded,
+                label: 'Flights',
+                count: counts['flights'] ?? 0,
+              ),
             ],
           ),
         ),
@@ -2512,6 +2653,29 @@ class ExploreScreen extends StatelessWidget {
             ),
           ),
         ],
+        if (isLoading)
+          Container(
+            margin: const EdgeInsets.only(top: 16),
+            padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE8E0D5)),
+            ),
+            child: const Column(
+              children: <Widget>[
+                CircularProgressIndicator(),
+                SizedBox(height: 12),
+                Text(
+                  'Loading explore results...',
+                  style: TextStyle(
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (!isLoading && filtered.isEmpty)
           Container(
             padding: const EdgeInsets.all(18),
@@ -2521,170 +2685,224 @@ class ExploreScreen extends StatelessWidget {
               border: Border.all(color: const Color(0xFFE8E0D5)),
             ),
             child: const Text(
-              'No places loaded yet. Select a trip location to see live results.',
+              'No results for this category yet. Select a trip location or switch categories.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.black54, height: 1.4),
             ),
           ),
-        ...filtered.map((ExplorePlaceResult place) {
-          final bool added = addedDestinationIds.contains(place.id);
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFFE8E0D5)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(22),
+        if (!isLoading)
+          ...filtered.map((ExplorePlaceResult place) {
+            final bool added = addedDestinationIds.contains(place.id);
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: const Color(0xFFE8E0D5)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(22),
+                    ),
+                    child: place.image.isNotEmpty
+                        ? TravelImage(
+                            place.image,
+                            height: 170,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          )
+                        : Container(
+                            height: 170,
+                            width: double.infinity,
+                            color: const Color(0xFFEFE7DA),
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.place_rounded,
+                              color: Color(0xFF9BA3AD),
+                              size: 40,
+                            ),
+                          ),
                   ),
-                  child: place.image.isNotEmpty
-                      ? TravelImage(
-                          place.image,
-                          height: 170,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        )
-                      : Container(
-                          height: 170,
-                          width: double.infinity,
-                          color: const Color(0xFFEFE7DA),
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.place_rounded,
-                            color: Color(0xFF9BA3AD),
-                            size: 40,
-                          ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text(
+                                place.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 17,
+                                ),
+                              ),
+                            ),
+                            if (place.rating != null)
+                              Text(
+                                place.rating!.toStringAsFixed(1),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFF4845F),
+                                ),
+                              ),
+                          ],
                         ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: Text(
-                              place.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 17,
-                              ),
-                            ),
+                        const SizedBox(height: 4),
+                        Text(
+                          place.location,
+                          style: const TextStyle(color: Colors.black54),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _resultTypeLabel(place),
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        if (place.date != null ||
+                            place.venue != null) ...<Widget>[
+                          const SizedBox(height: 6),
+                          Text(
+                            '${place.date ?? 'Date TBD'} • ${place.venue ?? place.location}',
+                            style: const TextStyle(color: Colors.black54),
                           ),
-                          if (place.rating != null)
-                            Text(
-                              place.rating!.toStringAsFixed(1),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFFF4845F),
-                              ),
-                            ),
                         ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        place.location,
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        place.type,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 10),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: FilledButton.icon(
-                          onPressed: () => onToggleAddDestination(place),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: added
-                                ? const Color(0xFF5B8A5E)
-                                : const Color(0xFF2196A6),
-                            foregroundColor: Colors.white,
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: FilledButton.icon(
+                            onPressed: () => onToggleAddDestination(place),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: added
+                                  ? const Color(0xFF5B8A5E)
+                                  : const Color(0xFF2196A6),
+                              foregroundColor: Colors.white,
+                            ),
+                            icon: Icon(
+                              added ? Icons.check_rounded : Icons.add_rounded,
+                            ),
+                            label: Text(
+                              added ? 'Added to Trip' : 'Add to Trip',
+                            ),
                           ),
-                          icon: Icon(
-                            added ? Icons.check_rounded : Icons.add_rounded,
-                          ),
-                          label: Text(added ? 'Added to Trip' : 'Add to Trip'),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-          );
-        }),
+                ],
+              ),
+            );
+          }),
       ],
     );
   }
 
-  Widget _filterChip(String id) {
-    final bool active = selectedFilters.contains(id);
+  Widget _categoryChip({
+    required String id,
+    required IconData icon,
+    required String label,
+    required int count,
+  }) {
+    final bool active = selectedCategory == id;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: FilterChip(
-        selected: active,
-        label: Text(_filterLabel(id)),
-        onSelected: (_) => onToggleFilter(id),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => onSelectCategory(id),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: active ? const Color(0xFFE8EEF9) : const Color(0xFFF4F5F7),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: active ? const Color(0xFF9AA8C9) : const Color(0xFFE1E4EA),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                icon,
+                size: 16,
+                color: active
+                    ? const Color(0xFF435A8B)
+                    : const Color(0xFF677089),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: active
+                      ? const Color(0xFF314A7A)
+                      : const Color(0xFF4B556B),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: active
+                      ? const Color(0xFF3F5788)
+                      : const Color(0xFFCCD3E2),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  String _filterLabel(String id) {
-    switch (id) {
-      case 'food':
-        return 'Food Tours';
-      case 'beaches':
-        return 'Beaches';
-      case 'hiking':
-        return 'Hiking';
-      case 'nightlife':
-        return 'Nightlife';
-      case 'museums':
-        return 'Museums';
-      case 'snorkeling':
-        return 'Snorkeling';
+  String _resultTypeLabel(ExplorePlaceResult place) {
+    final String category = _resultCategory(place);
+    switch (category) {
+      case 'hotels':
+        return 'Hotel';
+      case 'events':
+        return 'Event';
+      case 'flights':
+        return 'Flight';
       default:
-        return id;
+        return place.type.isEmpty ? 'Place' : place.type;
     }
   }
 
-  bool _matchesFilter(ExplorePlaceResult place, String filter) {
-    final String haystack = '${place.name} ${place.location} ${place.type}'
-        .toLowerCase();
-    switch (filter) {
-      case 'beaches':
-        return haystack.contains('beach') ||
-            haystack.contains('coast') ||
-            haystack.contains('water');
-      case 'hiking':
-        return haystack.contains('park') ||
-            haystack.contains('trail') ||
-            haystack.contains('hiking');
-      case 'food':
-        return haystack.contains('restaurant') ||
-            haystack.contains('cafe') ||
-            haystack.contains('food');
-      case 'nightlife':
-        return haystack.contains('bar') ||
-            haystack.contains('nightlife') ||
-            haystack.contains('club');
-      case 'museums':
-        return haystack.contains('museum') || haystack.contains('gallery');
-      case 'snorkeling':
-        return haystack.contains('snorkel') ||
-            haystack.contains('aquarium') ||
-            haystack.contains('tourist');
-      default:
-        return haystack.contains(filter.toLowerCase());
+  String _resultCategory(ExplorePlaceResult place) {
+    final String normalizedType = place.type.toLowerCase();
+    final String normalizedName = place.name.toLowerCase();
+
+    if (place.venue != null || place.date != null || place.ticketUrl != null) {
+      return 'events';
     }
+
+    if (normalizedType.contains('lodging') ||
+        normalizedType.contains('hotel') ||
+        normalizedName.contains('hotel') ||
+        normalizedName.contains('resort')) {
+      return 'hotels';
+    }
+
+    if (normalizedType.contains('flight') ||
+        normalizedType.contains('airport') ||
+        normalizedName.contains('flight')) {
+      return 'flights';
+    }
+
+    return 'places';
   }
 }
 
