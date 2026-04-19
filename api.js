@@ -849,4 +849,52 @@ exports.setApp = function (app, client) {
   }
 });
 
+app.post("/api/forgotPassword", async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const db = client.db("COP4331Cards");
+    const user = await db.collection("Users").findOne({ Email: email });
+
+    if (!user) {
+      // Don't reveal if email exists or not for security
+      res.status(200).json({ error: "", message: "If that email exists, a reset link has been sent." });
+      return;
+    }
+
+    const { sendPasswordResetEmail } = require("./sendPasswordResetEmail.js");
+    await sendPasswordResetEmail(email, user.UserId);
+
+    res.status(200).json({ error: "", message: "If that email exists, a reset link has been sent." });
+  } catch (e) {
+    res.status(200).json({ error: e.message });
+  }
+});
+
+app.post("/api/resetPassword", async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  try {
+    const jwt = require("jsonwebtoken");
+    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+
+    const bcrypt = require("bcrypt");
+    const saltRounds = 10;
+    const salt = await bcrypt.genSalt(saltRounds);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    const db = client.db("COP4331Cards");
+    await db.collection("Users").updateOne(
+      { UserId: decoded.userId },
+      { $set: { Password: hashedPassword } }
+    );
+
+    res.status(200).json({ error: "", message: "Password reset successfully!" });
+  } catch (e) {
+    res.status(200).json({ error: "Reset link is invalid or has expired." });
+  }
+});
+
+
+
 };

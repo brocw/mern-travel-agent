@@ -6,6 +6,8 @@ import RegisterPage from './pages/RegisterPage.tsx';
 import SearchPage from './pages/SearchPage.tsx';
 import TripPage from './pages/TripPage.tsx';
 import VerifyEmailPage from './pages/VerifyEmailPage.tsx';
+import ForgotPasswordPage from './pages/ForgotPasswordPage.tsx';
+import ResetPasswordPage from './pages/ResetPasswordPage.tsx';
 
 function App() {
   return (
@@ -16,6 +18,8 @@ function App() {
         <Route path="/search" element={<SearchPage />} />
         <Route path="/trips" element={<TripPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
       </Routes>
     </BrowserRouter>
   );
