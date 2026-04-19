@@ -127,6 +127,24 @@ function Login({ onClose }: LoginProps) {
             </div>
           </div>
 
+          {/* Forgot Password Link */}
+          <div style={{ textAlign: "right", marginTop: "-8px", marginBottom: "8px" }}>
+            <button
+              type="button"
+              onClick={() => window.location.href = "/forgot-password"}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#4CAF50",
+                cursor: "pointer",
+                fontSize: "13px",
+                padding: "0",
+              }}
+            >
+              Forgot password?
+            </button>
+          </div>
+
           {message && (
             <div className="th-login-error">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
