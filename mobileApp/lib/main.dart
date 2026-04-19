@@ -90,7 +90,6 @@ class _MyAppState extends State<MyApp> {
       // Check for errors in the response
       if (response['error'] != null &&
           response['error'].toString().isNotEmpty) {
-        print('Error fetching trips: ${response['error']}');
         return;
       }
 
@@ -182,8 +181,7 @@ class _MyAppState extends State<MyApp> {
             housing: housingStays,
             backendItems: items,
           );
-        } catch (e) {
-          print('Error parsing trip: $e');
+        } catch (_) {
           return null;
         }
       }).toList();
@@ -207,7 +205,7 @@ class _MyAppState extends State<MyApp> {
           _activeTripIndex = restoredIndex == -1 ? null : restoredIndex;
         }
       });
-      print('Loaded ${fetchedTrips.length} trips from backend');
+      _syncAddedDestinationIdsFromActiveTrip();
 
       if (_activeTripIndex != null &&
           _activeTripIndex! >= 0 &&
@@ -221,8 +219,13 @@ class _MyAppState extends State<MyApp> {
           _explorePlaces = <ExplorePlaceResult>[];
         });
       }
-    } catch (e) {
-      print('Exception fetching trips: $e');
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _exploreLoading = false;
+          _exploreError = 'Unable to load trips right now.';
+        });
+      }
     }
   }
 
@@ -255,8 +258,8 @@ class _MyAppState extends State<MyApp> {
           return image;
         }
       }
-    } catch (e) {
-      debugPrint('Failed to resolve preview image for $location: $e');
+    } catch (_) {
+      return 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80';
     }
 
     return 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80';
@@ -376,17 +379,11 @@ class _MyAppState extends State<MyApp> {
   void _showGlobalSnackBar(String message) {
     final BuildContext? currentContext = _appNavigatorKey.currentContext;
     if (currentContext == null) {
-      debugPrint(
-        'Unable to show snackbar: navigator context unavailable. Message: $message',
-      );
       return;
     }
 
     final messenger = ScaffoldMessenger.maybeOf(currentContext);
     if (messenger == null) {
-      debugPrint(
-        'Unable to show snackbar: ScaffoldMessenger unavailable. Message: $message',
-      );
       return;
     }
 
@@ -410,7 +407,6 @@ class _MyAppState extends State<MyApp> {
       });
     } catch (e) {
       // IMPORTANT NOTE: In a production app, you should surface authentication errors to the user and not just print them.
-      print('Authentication error: $e');
     }
   }
 
@@ -444,7 +440,6 @@ class _MyAppState extends State<MyApp> {
 
       await _fetchTripsFromBackend(userId);
     } catch (e) {
-      debugPrint('Sign in failed: $e');
       if (!mounted) return;
       _showGlobalSnackBar('Sign in failed: $e');
     }
@@ -1192,14 +1187,70 @@ class _MyAppState extends State<MyApp> {
       return;
     }
 
+    final Set<String> syncedDestinationIds = _destinationIdsFromTrip(trip);
+
     setState(() {
       _activeTripIndex = selectedIndex;
       _selectedTab = 2;
       _exploreLoading = true;
       _exploreError = null;
+      _addedDestinationIds
+        ..clear()
+        ..addAll(syncedDestinationIds);
     });
 
     _loadExplorePlacesForLocation(trip.location);
+  }
+
+  Set<String> _destinationIdsFromTrip(Trip trip) {
+    final Set<String> destinationIds = <String>{};
+    final List<dynamic> backendItems = trip.backendItems ?? <dynamic>[];
+
+    for (final dynamic item in backendItems) {
+      if (item is! Map) {
+        continue;
+      }
+
+      final dynamic data = item['data'];
+      if (data is! Map) {
+        continue;
+      }
+
+      final String placeId = data['placeId']?.toString() ?? '';
+      if (placeId.trim().isNotEmpty) {
+        destinationIds.add(placeId.trim());
+      }
+    }
+
+    return destinationIds;
+  }
+
+  void _syncAddedDestinationIdsFromActiveTrip() {
+    if (_trips.isEmpty ||
+        _activeTripIndex == null ||
+        _activeTripIndex! < 0 ||
+        _activeTripIndex! >= _trips.length) {
+      if (_addedDestinationIds.isNotEmpty && mounted) {
+        setState(() {
+          _addedDestinationIds.clear();
+        });
+      }
+      return;
+    }
+
+    final Set<String> syncedDestinationIds = _destinationIdsFromTrip(
+      _trips[_activeTripIndex!],
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _addedDestinationIds
+        ..clear()
+        ..addAll(syncedDestinationIds);
+    });
   }
 
   Future<void> _refreshTripsAfterTransportationChange() async {
@@ -1216,9 +1267,23 @@ class _MyAppState extends State<MyApp> {
       return <ItineraryDay>[];
     }
 
+    bool isHousingItem(String itemType, Map<String, dynamic> data) {
+      final String normalizedType = itemType.toLowerCase();
+      final String nestedType = data['type']?.toString().toLowerCase() ?? '';
+      final String category = data['category']?.toString().toLowerCase() ?? '';
+      final String name = data['name']?.toString().toLowerCase() ?? '';
+      final String combined = '$normalizedType $nestedType $category';
+
+      return combined.contains('hotel') ||
+          combined.contains('lodging') ||
+          combined.contains('resort') ||
+          combined.contains('accommodation') ||
+          name.contains('hotel') ||
+          name.contains('resort');
+    }
+
     final List<PlannedActivity> places = <PlannedActivity>[];
     final List<PlannedActivity> events = <PlannedActivity>[];
-    final List<PlannedActivity> travelDetails = <PlannedActivity>[];
 
     for (int index = 0; index < backendItems.length; index++) {
       final dynamic item = backendItems[index];
@@ -1232,9 +1297,7 @@ class _MyAppState extends State<MyApp> {
         continue;
       }
 
-      final Map<String, dynamic> data = Map<String, dynamic>.from(
-        rawData as Map,
-      );
+      final Map<String, dynamic> data = Map<String, dynamic>.from(rawData);
       final String title = data['name']?.toString() ?? 'Imported item';
       final String time = _backendItemTimeLabel(itemType, data);
       final String details = _backendItemDetailLabel(itemType, data);
@@ -1255,9 +1318,12 @@ class _MyAppState extends State<MyApp> {
           break;
         case 'flight':
         case 'hotel':
-          travelDetails.add(activity);
+          // Travel details are rendered in the dedicated Travel Info tab.
           break;
         default:
+          if (isHousingItem(itemType, data)) {
+            break;
+          }
           places.add(activity);
           break;
       }
@@ -1284,17 +1350,6 @@ class _MyAppState extends State<MyApp> {
         ),
       );
     }
-    if (travelDetails.isNotEmpty) {
-      days.add(
-        ItineraryDay(
-          id: 'backend-travel',
-          label: 'Travel Details',
-          date: 'From your trip items',
-          activities: travelDetails,
-        ),
-      );
-    }
-
     return days;
   }
 
@@ -1364,153 +1419,6 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  void _toggleActivityDone(String dayId, String activityId) {
-    // Checkbox state for itinerary items in the planner and travel-mode views.
-    setState(() {
-      final int dayIndex = _itinerary.indexWhere(
-        (ItineraryDay d) => d.id == dayId,
-      );
-      if (dayIndex == -1) {
-        return;
-      }
-      final ItineraryDay day = _itinerary[dayIndex];
-      final int activityIndex = day.activities.indexWhere(
-        (PlannedActivity a) => a.id == activityId,
-      );
-      if (activityIndex == -1) {
-        return;
-      }
-      day.activities[activityIndex] = day.activities[activityIndex].copyWith(
-        done: !day.activities[activityIndex].done,
-      );
-    });
-  }
-
-  Future<void> _showAddActivitySheet(String dayId) async {
-    // Bottom sheet editor for adding itinerary items to a specific day.
-    final TextEditingController titleController = TextEditingController();
-    final TextEditingController timeController = TextEditingController(
-      text: '09:00',
-    );
-    final TextEditingController costController = TextEditingController(
-      text: '0',
-    );
-    ActivityCategory selectedCategory = ActivityCategory.activity;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (BuildContext bottomSheetContext) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setBottomState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Text(
-                    'Add Activity',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: titleController,
-                    decoration: _inputDecoration('Activity name'),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: TextField(
-                          controller: timeController,
-                          decoration: _inputDecoration('Time (HH:MM)'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          keyboardType: TextInputType.number,
-                          controller: costController,
-                          decoration: _inputDecoration('Cost (\$)'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: ActivityCategory.values.map((
-                      ActivityCategory cat,
-                    ) {
-                      final bool active = selectedCategory == cat;
-                      return ChoiceChip(
-                        label: Text(cat.label),
-                        selected: active,
-                        onSelected: (_) {
-                          setBottomState(() {
-                            selectedCategory = cat;
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () {
-                        if (titleController.text.trim().isEmpty) {
-                          return;
-                        }
-                        setState(() {
-                          final ItineraryDay day = _itinerary.firstWhere(
-                            (ItineraryDay d) => d.id == dayId,
-                          );
-                          day.activities.add(
-                            PlannedActivity(
-                              id: 'manual-${DateTime.now().microsecondsSinceEpoch}',
-                              title: titleController.text.trim(),
-                              time: timeController.text.trim().isEmpty
-                                  ? '09:00'
-                                  : timeController.text.trim(),
-                              category: selectedCategory,
-                              cost:
-                                  double.tryParse(costController.text.trim()) ??
-                                  0,
-                            ),
-                          );
-                        });
-                        Navigator.of(bottomSheetContext).pop();
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _oceanBlue,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: const Text('Add to Day'),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     // The app is built as a single shell with shared state and a persistent bottom nav.
@@ -1532,7 +1440,7 @@ class _MyAppState extends State<MyApp> {
 
     return MaterialApp(
       navigatorKey: _appNavigatorKey,
-      title: 'Travel Helper',
+      title: 'Triptastic',
       debugShowCheckedModeBanner: false,
       theme: theme,
       home: _isAuthBootstrapping
@@ -1540,7 +1448,7 @@ class _MyAppState extends State<MyApp> {
           : _isLoggedIn
           ? Scaffold(
               appBar: AppBar(
-                title: const Text('Travel Helper'),
+                title: const _TriptasticWordmark(fontSize: 24),
                 actions: <Widget>[
                   IconButton(
                     tooltip: 'Log Out',
@@ -1627,14 +1535,50 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-  InputDecoration _inputDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      filled: true,
-      fillColor: const Color(0xFFF7F3EC),
-      border: OutlineInputBorder(
-        borderSide: BorderSide.none,
-        borderRadius: BorderRadius.circular(12),
+}
+
+class _TriptasticWordmark extends StatelessWidget {
+  const _TriptasticWordmark({
+    this.fontSize = 22,
+    this.onDark = false,
+    this.showShadow = false,
+  });
+
+  final double fontSize;
+  final bool onDark;
+  final bool showShadow;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color tripColor = onDark
+        ? const Color(0xFFFFFFFF)
+        : const Color(0xFF1E2A4A);
+    final Color tasticColor = onDark
+      ? const Color(0xFF5D83A8)
+        : const Color(0xFF5D83A8);
+    final List<Shadow> shadows = showShadow
+        ? const <Shadow>[
+            Shadow(
+              color: Color(0x66000000),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ]
+        : const <Shadow>[];
+
+    return RichText(
+      text: TextSpan(
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w900,
+          letterSpacing: -0.35,
+          height: 1,
+          shadows: shadows,
+        ),
+        children: <InlineSpan>[
+          TextSpan(text: 'Trip', style: TextStyle(color: tripColor)),
+          TextSpan(text: 'tastic!', style: TextStyle(color: tasticColor)),
+        ],
       ),
     );
   }
@@ -1683,13 +1627,10 @@ class LandingScreen extends StatelessWidget {
                         children: const <Widget>[
                           Icon(Icons.explore_rounded, color: Colors.white),
                           SizedBox(width: 8),
-                          Text(
-                            'Travel Helper',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                            ),
+                          _TriptasticWordmark(
+                            fontSize: 30,
+                            onDark: true,
+                            showShadow: true,
                           ),
                         ],
                       ),
@@ -2210,14 +2151,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 18),
                         const Center(
-                          child: Text(
-                            'Travel Helper',
-                            style: TextStyle(
-                              color: Color(0xFF2196A6),
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
+                          child: _TriptasticWordmark(fontSize: 20),
                         ),
                       ],
                     ),
@@ -2730,8 +2664,32 @@ class ExploreScreen extends StatelessWidget {
       case 'events':
         return 'Event';
       default:
-        return place.type.isEmpty ? 'Place' : place.type;
+        return _humanizeTypeLabel(place.type);
     }
+  }
+
+  String _humanizeTypeLabel(String rawType) {
+    final String cleaned = rawType.trim();
+    if (cleaned.isEmpty) {
+      return 'Place';
+    }
+
+    final List<String> words = cleaned
+        .replaceAll(RegExp(r'[_-]+'), ' ')
+        .split(RegExp(r'\s+'))
+        .where((String word) => word.isNotEmpty)
+        .toList();
+
+    if (words.isEmpty) {
+      return 'Place';
+    }
+
+    return words
+        .map((String word) {
+          final String lower = word.toLowerCase();
+          return '${lower[0].toUpperCase()}${lower.substring(1)}';
+        })
+        .join(' ');
   }
 
   String _resultCategory(ExplorePlaceResult place) {
@@ -3908,6 +3866,7 @@ class _TransportationScreenState extends State<TransportationScreen> {
           ...outboundData,
           'name':
               '${outboundData['airline']?.toString() ?? 'Flight'} $outboundRoute ↔ $returnRoute',
+          'return_price': returnData['price']?.toString() ?? '',
           'return_departure_time':
               returnData['departure_time']?.toString() ?? '',
           'return_arrival_time': returnData['arrival_time']?.toString() ?? '',
@@ -4105,7 +4064,7 @@ class _TransportationScreenState extends State<TransportationScreen> {
             children: <Widget>[
               Expanded(
                 child: DropdownButtonFormField<bool>(
-                  value: _roundTrip,
+                  initialValue: _roundTrip,
                   decoration: const InputDecoration(labelText: 'Trip Type'),
                   items: const <DropdownMenuItem<bool>>[
                     DropdownMenuItem<bool>(
@@ -4135,7 +4094,7 @@ class _TransportationScreenState extends State<TransportationScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: DropdownButtonFormField<int>(
-                  value: _adults,
+                  initialValue: _adults,
                   decoration: const InputDecoration(labelText: 'Travelers'),
                   items: List<DropdownMenuItem<int>>.generate(
                     6,
@@ -4158,7 +4117,7 @@ class _TransportationScreenState extends State<TransportationScreen> {
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
-            value: _travelClass,
+            initialValue: _travelClass,
             decoration: const InputDecoration(labelText: 'Cabin Class'),
             items: const <String>['1', '2', '3', '4']
                 .map(
@@ -4519,7 +4478,7 @@ class _TransportationScreenState extends State<TransportationScreen> {
   }
 }
 
-// Travel-mode details for itinerary, hotel, flights, housing, and essentials.
+// Travel-mode details for itinerary, transportation, and housing.
 class TripDetailsScreen extends StatefulWidget {
   const TripDetailsScreen({
     super.key,
@@ -4540,7 +4499,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
     with SingleTickerProviderStateMixin {
   // Tab controller keeps travel details grouped into logical sections.
   late final TabController _tabController = TabController(
-    length: 4,
+    length: 3,
     vsync: this,
   );
 
@@ -4568,6 +4527,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
       if (itemType == 'driving' || itemType == 'drive') {
         final String name = data['name']?.toString() ?? 'Driving selected';
         return <String, dynamic>{
+          'mode': 'driving',
           'title': 'Driving Plan',
           'content': name,
           'icon': Icons.directions_car_rounded,
@@ -4577,6 +4537,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
       if (itemType == 'undecided') {
         final String name = data['name']?.toString() ?? 'Transportation undecided';
         return <String, dynamic>{
+          'mode': 'undecided',
           'title': 'Undecided Plan',
           'content': name,
           'icon': Icons.schedule_rounded,
@@ -4617,22 +4578,50 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
         }
 
         return <String, dynamic>{
+          'mode': 'flight',
           'title': 'Flight Plan',
           'content': lines.join('\n'),
           'icon': Icons.flight_rounded,
+          'name': name,
+          'outboundRoute': there,
+          'outboundDepartureTime': data['departure_time']?.toString() ?? '',
+          'outboundArrivalTime': data['arrival_time']?.toString() ?? '',
+          'outboundTime': thereTime,
+          'returnRoute': back,
+          'returnDepartureTime':
+              data['return_departure_time']?.toString() ?? '',
+          'returnArrivalTime': data['return_arrival_time']?.toString() ?? '',
+          'returnTime': backTime,
+          'airline': data['airline']?.toString() ?? '',
+          'duration': data['duration']?.toString() ?? '',
+          'price': data['price']?.toString() ?? '',
         };
       }
     }
 
     if (widget.trip.flightInfo.trim().isNotEmpty) {
       return <String, dynamic>{
+        'mode': 'flight',
         'title': 'Flight Plan',
         'content': widget.trip.flightInfo,
         'icon': Icons.flight_rounded,
+        'name': widget.trip.flightInfo,
+        'outboundRoute': '',
+        'outboundDepartureTime': '',
+        'outboundArrivalTime': '',
+        'outboundTime': '',
+        'returnRoute': '',
+        'returnDepartureTime': '',
+        'returnArrivalTime': '',
+        'returnTime': '',
+        'airline': '',
+        'duration': '',
+        'price': '',
       };
     }
 
     return <String, dynamic>{
+      'mode': 'none',
       'title': 'Transport Plan',
       'content':
           'No transportation plan selected yet. Choose driving or flights from the Transport tab.',
@@ -4700,12 +4689,11 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
           color: Colors.white,
           child: TabBar(
             controller: _tabController,
-            isScrollable: true,
+            isScrollable: false,
             tabs: const <Tab>[
               Tab(text: 'Itinerary'),
               Tab(text: 'Travel Info'),
               Tab(text: 'Housing'),
-              Tab(text: 'Essentials'),
             ],
           ),
         ),
@@ -4716,7 +4704,6 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
               _itineraryTab(),
               _travelInfoTab(),
               _housingTab(),
-              _essentialsTab(),
             ],
           ),
         ),
@@ -4796,6 +4783,15 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
   Widget _travelInfoTab() {
     // Show the active transportation mode selected from the Transport tab.
     final Map<String, dynamic> transportInfo = _activeTransportInfo();
+    final String mode = transportInfo['mode']?.toString() ?? 'none';
+
+    if (mode == 'flight') {
+      return ListView(
+        padding: const EdgeInsets.all(12),
+        children: <Widget>[_flightPlanCard(transportInfo)],
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.all(14),
       children: <Widget>[
@@ -4807,6 +4803,174 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
               : Icons.info_outline_rounded,
         ),
       ],
+    );
+  }
+
+  Widget _flightPlanCard(Map<String, dynamic> info) {
+    final String name = info['name']?.toString() ?? '';
+    final String outboundRoute = info['outboundRoute']?.toString() ?? '';
+    final String outboundDepartureTime =
+      info['outboundDepartureTime']?.toString() ?? '';
+    final String outboundArrivalTime =
+      info['outboundArrivalTime']?.toString() ?? '';
+    final String returnRoute = info['returnRoute']?.toString() ?? '';
+    final String returnDepartureTime =
+      info['returnDepartureTime']?.toString() ?? '';
+    final String returnArrivalTime =
+      info['returnArrivalTime']?.toString() ?? '';
+    final String airline = info['airline']?.toString() ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE8E0D5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Row(
+            children: <Widget>[
+              Icon(Icons.flight_rounded, color: Color(0xFF2196A6), size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Flight Plan',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1A2B3C),
+                ),
+              ),
+            ],
+          ),
+          if (name.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              name,
+              style: const TextStyle(
+                color: Color(0xFF42506A),
+                fontSize: 13,
+                height: 1.25,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              if (airline.trim().isNotEmpty) _flightMetaChip(airline),
+            ],
+          ),
+          if (outboundRoute.trim().isNotEmpty ||
+              outboundDepartureTime.trim().isNotEmpty ||
+              outboundArrivalTime.trim().isNotEmpty)
+            ...<Widget>[
+              const SizedBox(height: 12),
+              _flightLegCard(
+                title: 'Outbound',
+                route: outboundRoute,
+                departureTime: outboundDepartureTime,
+                arrivalTime: outboundArrivalTime,
+              ),
+            ],
+          if (returnRoute.trim().isNotEmpty ||
+              returnDepartureTime.trim().isNotEmpty ||
+              returnArrivalTime.trim().isNotEmpty)
+            ...<Widget>[
+              const SizedBox(height: 8),
+              _flightLegCard(
+                title: 'Return',
+                route: returnRoute,
+                departureTime: returnDepartureTime,
+                arrivalTime: returnArrivalTime,
+              ),
+            ],
+          if (outboundRoute.trim().isEmpty &&
+              outboundDepartureTime.trim().isEmpty &&
+              outboundArrivalTime.trim().isEmpty &&
+              returnRoute.trim().isEmpty &&
+              returnDepartureTime.trim().isEmpty &&
+              returnArrivalTime.trim().isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: Text(
+                'Detailed leg information is not available for this saved flight.',
+                style: TextStyle(color: Colors.black54),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _flightLegCard({
+    required String title,
+    required String route,
+    required String departureTime,
+    required String arrivalTime,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FAFF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFDDE6F5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF5D83A8),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (route.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 2),
+            Text(
+              route,
+              style: const TextStyle(
+                color: Color(0xFF1A2B3C),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          if (departureTime.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 4),
+            Text(
+              'Depart: $departureTime',
+              style: const TextStyle(color: Color(0xFF4F5E7A), fontSize: 12.5),
+            ),
+          ],
+          if (arrivalTime.trim().isNotEmpty)
+            Text(
+              'Arrive: $arrivalTime',
+              style: const TextStyle(color: Color(0xFF4F5E7A), fontSize: 12.5),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _flightMetaChip(String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8EEF9),
+        borderRadius: BorderRadius.circular(100),
+      ),
+      child: Text(
+        value,
+        style: const TextStyle(
+          color: Color(0xFF365384),
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
     );
   }
 
@@ -4846,32 +5010,6 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
             ),
           )
           .toList(),
-    );
-  }
-
-  Widget _essentialsTab() {
-    // Useful trip reference details live here for offline-style access during travel.
-    return ListView(
-      padding: const EdgeInsets.all(14),
-      children: <Widget>[
-        _infoCard(
-          title: 'Emergency',
-          content: 'Police: 119 | Ambulance: 102 | Hotel: +960 660-0304',
-          icon: Icons.emergency_rounded,
-        ),
-        const SizedBox(height: 10),
-        _infoCard(
-          title: 'Currency',
-          content: 'USD and MVR accepted at most resorts',
-          icon: Icons.payments_rounded,
-        ),
-        const SizedBox(height: 10),
-        _infoCard(
-          title: 'Connectivity',
-          content: 'Local eSIM installed | roaming backup enabled',
-          icon: Icons.wifi_rounded,
-        ),
-      ],
     );
   }
 
