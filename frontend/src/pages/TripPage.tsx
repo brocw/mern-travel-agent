@@ -241,8 +241,20 @@ const TripPage = () => {
                   </div>
                 )}
                 <a href={`/search?q=${encodeURIComponent(trip.Location)}&tripId=${trip._id}`}
-                  className="tt-trip-card-toggle"
-                  style={{ textDecoration: 'none', textAlign: 'center', marginBottom: '0.5rem', background: 'var(--tt-navy)', color: 'white', borderColor: 'var(--tt-navy)' }}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '0.75rem',
+                    borderRadius: '0.875rem',
+                    background: 'var(--tt-navy)',
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '0.875rem',
+                    textAlign: 'center',
+                    textDecoration: 'none',
+                    marginBottom: '0.5rem',
+                    transition: 'all 0.2s',
+                  }}
                 >
                   ✏️ Add More Items
                 </a>
