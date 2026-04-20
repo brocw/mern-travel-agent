@@ -275,9 +275,9 @@ const TripPlanner = ({
                   )}
                   {dayItems.map(({ item, idx }) => (
                     <div key={idx} className="tt-trip-planner-item">
-                      <span className="tt-trip-planner-item-icon">{item.type === 'place' ? '📍' : '🎟️'}</span>
+                      <span className="tt-trip-planner-item-icon">{item.data?.type === 'flight' ? '✈️' : item.type === 'place' ? '📍' : '🎟️'}</span>
                       <div className="tt-trip-planner-item-info">
-                        <div className="tt-trip-planner-item-type">{item.type === 'place' ? 'Place' : 'Event'}</div>
+                        <div className="tt-trip-planner-item-type">{item.data?.type === 'flight' ? 'Flight' : item.type === 'place' ? 'Place' : 'Event'}</div>
                         <div className="tt-trip-planner-item-name">{item.data.name || item.data}</div>
                         {item.data.address && <div className="tt-trip-planner-item-detail">{item.data.address}</div>}
                         {item.data.date && <div className="tt-trip-planner-item-detail">{item.data.date}</div>}
