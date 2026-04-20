@@ -315,7 +315,18 @@ const SearchPage = () => {
                   {activeTab === 'places' && <PlacesList places={places} onAddToTrip={handleAddToTrip} loading={loading} />}
                   {activeTab === 'hotels' && <PlacesList places={hotels} onAddToTrip={handleAddToTrip} loading={hotelsLoading} />}
                   {activeTab === 'events' && <EventsList events={events} onAddToTrip={handleAddToTrip} loading={loading} />}
-                  {activeTab === 'flights' && <FlightTickets defaultOutboundDate={startDate} defaultReturnDate={endDate} />}
+                  {activeTab === 'flights' && (
+                    <FlightTickets
+                      defaultOutboundDate={startDate}
+                      defaultReturnDate={endDate}
+                      onAddToTrip={(flightData: any) => {
+                        setTripItems(prev => [...prev, { type: 'place' as const, data: flightData }]);
+                        setMessage(`Added flight to your trip`);
+                        setMessageType('success');
+                        setShowTripPanel(true);
+                      }}
+                    />
+                  )}
                 </div>
               </div>
               <div className={`tt-search-sidebar ${showTripPanel ? 'open' : ''}`}>
