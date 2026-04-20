@@ -240,7 +240,12 @@ const TripPage = () => {
                     )}
                   </div>
                 )}
-
+                <a href={`/search?q=${encodeURIComponent(trip.Location)}&tripId=${trip._id}`}
+                  className="tt-trip-card-toggle"
+                  style={{ textDecoration: 'none', textAlign: 'center', marginBottom: '0.5rem', background: 'var(--tt-navy)', color: 'white', borderColor: 'var(--tt-navy)' }}
+                >
+                  ✏️ Add More Items
+                </a>
                 {/* Delete button */}
                 <button
                   className="tt-trip-card-delete"

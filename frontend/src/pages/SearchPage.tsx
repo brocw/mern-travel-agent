@@ -54,9 +54,12 @@ const SearchPage = () => {
   const [showWizard, setShowWizard] = useState(true);
   const [pendingFlight, setPendingFlight] = useState<any>(null);
   const [pendingHotel, setPendingHotel] = useState<any>(null);
+  const [existingTripId, setExistingTripId] = useState<string | null>(null);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const q = params.get('q');
+    const tripId = params.get('tripId');
+    if (tripId) setExistingTripId(tripId);
     if (q) {
       setShowWizard(false);
       runSearch(q);
@@ -187,21 +190,28 @@ const SearchPage = () => {
   const handleCreateTrip = async (locationName: string, items: TripItem[]) => {
     setSavingTrip(true);
     try {
-      const tripResponse = await fetch(buildPath('api/createTrip'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user?.id, location: locationName, jwtToken: getToken() }),
-      });
-      const tripData = await tripResponse.json();
-      if (tripData.error) { setMessage(tripData.error); setMessageType('error'); setSavingTrip(false); return; }
-      if (tripData.jwtToken) storeToken({ accessToken: tripData.jwtToken });
+      let tripId = existingTripId;
+      let tok = getToken();
 
-      let tok = tripData.jwtToken || getToken();
+      // Only create a new trip if we don't have an existing one
+      if (!tripId) {
+        const tripResponse = await fetch(buildPath('api/createTrip'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user?.id, location: locationName, jwtToken: tok }),
+        });
+        const tripData = await tripResponse.json();
+        if (tripData.error) { setMessage(tripData.error); setMessageType('error'); setSavingTrip(false); return; }
+        if (tripData.jwtToken) storeToken({ accessToken: tripData.jwtToken });
+        tripId = tripData.tripId;
+        tok = tripData.jwtToken || tok;
+      }
+
       for (const item of items) {
         const addRes = await fetch(buildPath('api/addToTrip'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user?.id, tripId: tripData.tripId, item, jwtToken: tok }),
+          body: JSON.stringify({ userId: user?.id, tripId, item, jwtToken: tok }),
         });
         const addData = await addRes.json();
         if (addData.jwtToken) { tok = addData.jwtToken; storeToken({ accessToken: addData.jwtToken }); }
@@ -211,6 +221,7 @@ const SearchPage = () => {
       setMessageType('success');
       setTripItems([]);
       setShowTripPanel(false);
+      setExistingTripId(null);
       setTimeout(() => setMessage(''), 4000);
     } catch (error: any) {
       setMessage(error.message || 'Error creating trip');
