@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Map from '../components/Map';
 import PlacesList from '../components/PlacesList';
 import EventsList from '../components/EventsList';
@@ -52,6 +52,14 @@ const SearchPage = () => {
   const [activeTab, setActiveTab] = useState<Tab>('places');
   const [showTripPanel, setShowTripPanel] = useState(false);
   const [showWizard, setShowWizard] = useState(true);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get('q');
+    if (q) {
+      setShowWizard(false);
+      runSearch(q);
+    }
+  }, []);
 
   const userData = localStorage.getItem('user_data');
   const user = userData ? JSON.parse(userData) : null;

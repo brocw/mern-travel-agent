@@ -48,7 +48,7 @@ const features = [
 
 const LoginPage = () => {
   const [showLogin, setShowLogin] = useState(false);
-
+  const [heroSearch, setHeroSearch] = useState('');
   const isLoggedIn = !!localStorage.getItem('user_data');
   return (
     <div className="th-landing">
@@ -96,12 +96,23 @@ const LoginPage = () => {
           </p>
 
           {/* Search bar */}
-          <form className="th-hero-search" onSubmit={(e) => { e.preventDefault(); isLoggedIn ? window.location.href = '/search' : setShowLogin(true); }}>
+          <form className="th-hero-search" onSubmit={(e) => {
+            e.preventDefault();
+            if (!isLoggedIn) { setShowLogin(true); return; }
+            const query = heroSearch.trim();
+            window.location.href = query ? `/search?q=${encodeURIComponent(query)}` : '/search';
+          }}>
             <div className="th-hero-search-input-wrap">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
-              <input type="text" className="th-hero-search-input" placeholder="Search destinations, activities, cities..." />
+              <input
+                type="text"
+                className="th-hero-search-input"
+                placeholder="Search destinations, activities, cities..."
+                value={heroSearch}
+                onChange={e => setHeroSearch(e.target.value)}
+              />
             </div>
             <button type="submit" className="th-hero-search-btn">
               Search
