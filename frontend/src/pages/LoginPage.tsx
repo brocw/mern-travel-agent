@@ -98,8 +98,12 @@ const LoginPage = () => {
           {/* Search bar */}
           <form className="th-hero-search" onSubmit={(e) => {
             e.preventDefault();
-            if (!isLoggedIn) { setShowLogin(true); return; }
             const query = heroSearch.trim();
+            if (!isLoggedIn) {
+              if (query) localStorage.setItem('pending_search', query);
+              setShowLogin(true);
+              return;
+            }
             window.location.href = query ? `/search?q=${encodeURIComponent(query)}` : '/search';
           }}>
             <div className="th-hero-search-input-wrap">
