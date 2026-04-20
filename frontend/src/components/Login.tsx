@@ -61,7 +61,9 @@ function Login({ onClose }: LoginProps) {
         } else {
           var user = { firstName: firstName, lastName: lastName, id: userId };
           localStorage.setItem("user_data", JSON.stringify(user));
-          window.location.href = "/search";
+          const pendingSearch = localStorage.getItem('pending_search');
+          localStorage.removeItem('pending_search');
+          window.location.href = pendingSearch ? `/search?q=${encodeURIComponent(pendingSearch)}` : '/search';
         }
       } catch (e) {
         console.log(e);

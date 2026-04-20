@@ -32,6 +32,7 @@ interface BookingOption {
 interface FlightTicketsProps {
   defaultReturnDate?: string;
   defaultOutboundDate?: string;
+  onAddToTrip?: (flightData: any) => void;
 }
 
 const minutesToDuration = (minutes?: number) => {
@@ -39,8 +40,7 @@ const minutesToDuration = (minutes?: number) => {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 };
 
-const FlightTickets = ({ defaultOutboundDate = '', defaultReturnDate = '' }: FlightTicketsProps) => {
-  const [departureId, setDepartureId] = useState('');
+const FlightTickets = ({ defaultOutboundDate = '', defaultReturnDate = '', onAddToTrip }: FlightTicketsProps) => {  const [departureId, setDepartureId] = useState('');
   const [arrivalId, setArrivalId] = useState('');
   const [outboundDate, setOutboundDate] = useState(defaultOutboundDate);
   const [returnDate, setReturnDate] = useState(defaultReturnDate);
@@ -190,6 +190,19 @@ const FlightTickets = ({ defaultOutboundDate = '', defaultReturnDate = '' }: Fli
               <button className="tt-flights-action-btn" onClick={() => handleGetReturnFlights(flight)} disabled={loading || !getDepartureToken(flight)}>
                 Select — Get Return Flights →
               </button>
+              {onAddToTrip && (
+                <button
+                  className="tt-flights-action-btn"
+                  style={{ marginTop: '0.5rem', background: 'var(--tt-navy)', color: 'white' }}
+                  onClick={() => onAddToTrip({
+                    name: `Flight: ${flight.flights?.[0]?.departure_airport?.id || departureId} → ${flight.flights?.[0]?.arrival_airport?.id || arrivalId}`,
+                    address: `${flight.flights?.[0]?.airline || 'Unknown airline'} · ${minutesToDuration(flight.total_duration)} · ${flight.price ? `$${flight.price}` : 'N/A'}`,
+                    type: 'flight',
+                  })}
+                >
+                  🧳 Save to Trip
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -217,6 +230,19 @@ const FlightTickets = ({ defaultOutboundDate = '', defaultReturnDate = '' }: Fli
               <button className="tt-flights-action-btn" onClick={() => handleGetBookingOptions(flight)} disabled={loading || !getBookingToken(flight)}>
                 Select — Get Booking Links →
               </button>
+              {onAddToTrip && (
+                <button
+                  className="tt-flights-action-btn"
+                  style={{ marginTop: '0.5rem', background: 'var(--tt-navy)', color: 'white' }}
+                  onClick={() => onAddToTrip({
+                    name: `Return: ${flight.flights?.[0]?.departure_airport?.id || arrivalId} → ${flight.flights?.[0]?.arrival_airport?.id || departureId}`,
+                    address: `${flight.flights?.[0]?.airline || 'Unknown airline'} · ${minutesToDuration(flight.total_duration)} · ${flight.price ? `$${flight.price}` : 'N/A'}`,
+                    type: 'flight',
+                  })}
+                >
+                  🧳 Save to Trip
+                </button>
+              )}
             </div>
           ))}
         </div>

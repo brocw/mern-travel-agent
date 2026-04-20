@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Map from '../components/Map';
 import PlacesList from '../components/PlacesList';
 import EventsList from '../components/EventsList';
@@ -52,6 +52,19 @@ const SearchPage = () => {
   const [activeTab, setActiveTab] = useState<Tab>('places');
   const [showTripPanel, setShowTripPanel] = useState(false);
   const [showWizard, setShowWizard] = useState(true);
+  const [pendingFlight, setPendingFlight] = useState<any>(null);
+  const [pendingHotel, setPendingHotel] = useState<any>(null);
+  const [existingTripId, setExistingTripId] = useState<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get('q');
+    const tripId = params.get('tripId');
+    if (tripId) setExistingTripId(tripId);
+    if (q) {
+      setShowWizard(false);
+      runSearch(q);
+    }
+  }, []);
 
   const userData = localStorage.getItem('user_data');
   const user = userData ? JSON.parse(userData) : null;
@@ -156,6 +169,14 @@ const SearchPage = () => {
 
   const handleAddToTrip = (item: Place | Event) => {
     const isPlace = 'address' in item;
+    // If it's a lodging/hotel, send to hotel slot
+    if (isPlace && (item as Place).type === 'lodging') {
+      setPendingHotel({ name: (item as Place).name, address: (item as Place).address });
+      setMessage(`Added "${item.name}" to Where You're Staying`);
+      setMessageType('success');
+      setShowTripPanel(true);
+      return;
+    }
     setTripItems(prev => [...prev, { type: isPlace ? 'place' : 'event', data: item }]);
     setMessage(`Added "${item.name}" to your trip`);
     setMessageType('success');
@@ -169,21 +190,28 @@ const SearchPage = () => {
   const handleCreateTrip = async (locationName: string, items: TripItem[]) => {
     setSavingTrip(true);
     try {
-      const tripResponse = await fetch(buildPath('api/createTrip'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user?.id, location: locationName, jwtToken: getToken() }),
-      });
-      const tripData = await tripResponse.json();
-      if (tripData.error) { setMessage(tripData.error); setMessageType('error'); setSavingTrip(false); return; }
-      if (tripData.jwtToken) storeToken({ accessToken: tripData.jwtToken });
+      let tripId = existingTripId;
+      let tok = getToken();
 
-      let tok = tripData.jwtToken || getToken();
+      // Only create a new trip if we don't have an existing one
+      if (!tripId) {
+        const tripResponse = await fetch(buildPath('api/createTrip'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user?.id, location: locationName, jwtToken: tok }),
+        });
+        const tripData = await tripResponse.json();
+        if (tripData.error) { setMessage(tripData.error); setMessageType('error'); setSavingTrip(false); return; }
+        if (tripData.jwtToken) storeToken({ accessToken: tripData.jwtToken });
+        tripId = tripData.tripId;
+        tok = tripData.jwtToken || tok;
+      }
+
       for (const item of items) {
         const addRes = await fetch(buildPath('api/addToTrip'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user?.id, tripId: tripData.tripId, item, jwtToken: tok }),
+          body: JSON.stringify({ userId: user?.id, tripId, item, jwtToken: tok }),
         });
         const addData = await addRes.json();
         if (addData.jwtToken) { tok = addData.jwtToken; storeToken({ accessToken: addData.jwtToken }); }
@@ -193,6 +221,7 @@ const SearchPage = () => {
       setMessageType('success');
       setTripItems([]);
       setShowTripPanel(false);
+      setExistingTripId(null);
       setTimeout(() => setMessage(''), 4000);
     } catch (error: any) {
       setMessage(error.message || 'Error creating trip');
@@ -307,7 +336,24 @@ const SearchPage = () => {
                   {activeTab === 'places' && <PlacesList places={places} onAddToTrip={handleAddToTrip} loading={loading} />}
                   {activeTab === 'hotels' && <PlacesList places={hotels} onAddToTrip={handleAddToTrip} loading={hotelsLoading} />}
                   {activeTab === 'events' && <EventsList events={events} onAddToTrip={handleAddToTrip} loading={loading} />}
-                  {activeTab === 'flights' && <FlightTickets defaultOutboundDate={startDate} defaultReturnDate={endDate} />}
+                  {activeTab === 'flights' && (
+                    <FlightTickets
+                      defaultOutboundDate={startDate}
+                      defaultReturnDate={endDate}
+                      onAddToTrip={(flightData: any) => {
+                        const isReturn = flightData.name?.startsWith('Return:');
+                        setPendingFlight({
+                          direction: isReturn ? 'return' : 'outbound',
+                          label: flightData.name,
+                          airline: flightData.address,
+                          price: '',
+                        });
+                        setMessage(`Added flight to Getting There`);
+                        setMessageType('success');
+                        setShowTripPanel(true);
+                      }}
+                    />
+                  )}
                 </div>
               </div>
               <div className={`tt-search-sidebar ${showTripPanel ? 'open' : ''}`}>
@@ -321,6 +367,10 @@ const SearchPage = () => {
                   isOpen={showTripPanel}
                   onOpenFlights={() => { setActiveTab('flights'); setShowTripPanel(false); }}
                   onOpenHotels={() => { setActiveTab('hotels'); setShowTripPanel(false); }}
+                  pendingFlight={pendingFlight}
+                  onFlightConsumed={() => setPendingFlight(null)}
+                  pendingHotel={pendingHotel}
+                  onHotelConsumed={() => setPendingHotel(null)}
                 />
               </div>
             </div>
