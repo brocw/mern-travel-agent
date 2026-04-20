@@ -44,12 +44,21 @@ const TripPlanner = ({
   onOpenHotels,
 }: TripPlannerProps) => {
   const [outboundFlight, setOutboundFlight] = useState<FlightSlot>({ type: null });
+  const [numDays, setNumDays] = useState(1);
+  const [itemDays, setItemDays] = useState<Record<number, number>>({});
   const [returnFlight, setReturnFlight] = useState<FlightSlot>({ type: null });
   const [hotel, setHotel] = useState<HotelSlot>({ type: null });
   const [showOutboundOptions, setShowOutboundOptions] = useState(false);
   const [showReturnOptions, setShowReturnOptions] = useState(false);
   const [showHotelOptions, setShowHotelOptions] = useState(false);
-
+  const getItemDay = (index: number) => itemDays[index] || 1;
+  const setItemDay = (index: number, day: number) => {
+    setItemDays(prev => ({ ...prev, [index]: day }));
+  };
+  const dayGroups = Array.from({ length: numDays }, (_, i) => i + 1).map(day => ({
+    day,
+    items: items.map((item, idx) => ({ item, idx })).filter(({ idx }) => getItemDay(idx) === day),
+  }));
   const closeAll = () => { setShowOutboundOptions(false); setShowReturnOptions(false); setShowHotelOptions(false); };
 
   const FlightSlotUI = ({
@@ -232,7 +241,20 @@ const TripPlanner = ({
             </div>
           )}
 
-          <div className="tt-planner-section-label" style={{ marginTop: '0.5rem' }}>Your Itinerary</div>
+          <div className="tt-planner-section-label" style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>Your Itinerary</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <button
+                onClick={() => setNumDays(Math.max(1, numDays - 1))}
+                style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--tt-ice)', color: 'var(--tt-navy)', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--tt-purple)' }}
+              >−</button>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--tt-navy)' }}>{numDays} day{numDays > 1 ? 's' : ''}</span>
+              <button
+                onClick={() => setNumDays(numDays + 1)}
+                style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--tt-ice)', color: 'var(--tt-navy)', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--tt-purple)' }}
+              >+</button>
+            </div>
+          </div>
 
           {items.length === 0 ? (
             <div className="tt-trip-planner-empty">
@@ -241,16 +263,37 @@ const TripPlanner = ({
             </div>
           ) : (
             <div className="tt-trip-planner-items">
-              {items.map((item, index) => (
-                <div key={index} className="tt-trip-planner-item">
-                  <span className="tt-trip-planner-item-icon">{item.type === 'place' ? '📍' : '🎟️'}</span>
-                  <div className="tt-trip-planner-item-info">
-                    <div className="tt-trip-planner-item-type">{item.type === 'place' ? 'Place' : 'Event'}</div>
-                    <div className="tt-trip-planner-item-name">{item.data.name || item.data}</div>
-                    {item.data.address && <div className="tt-trip-planner-item-detail">{item.data.address}</div>}
-                    {item.data.date && <div className="tt-trip-planner-item-detail">{item.data.date}</div>}
+              {dayGroups.map(({ day, items: dayItems }) => (
+                <div key={day}>
+                  <div style={{ padding: '0.5rem 0.75rem', margin: '0.5rem 0 0.25rem', background: 'var(--tt-ice)', borderRadius: '0.5rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--tt-navy)', letterSpacing: '0.03em' }}>
+                    Day {day}
                   </div>
-                  <button className="tt-trip-planner-remove" onClick={() => onRemoveItem(index)}>✕</button>
+                  {dayItems.length === 0 && (
+                    <p style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: 'var(--tt-subtle)', fontStyle: 'italic' }}>
+                      No items assigned to this day
+                    </p>
+                  )}
+                  {dayItems.map(({ item, idx }) => (
+                    <div key={idx} className="tt-trip-planner-item">
+                      <span className="tt-trip-planner-item-icon">{item.type === 'place' ? '📍' : '🎟️'}</span>
+                      <div className="tt-trip-planner-item-info">
+                        <div className="tt-trip-planner-item-type">{item.type === 'place' ? 'Place' : 'Event'}</div>
+                        <div className="tt-trip-planner-item-name">{item.data.name || item.data}</div>
+                        {item.data.address && <div className="tt-trip-planner-item-detail">{item.data.address}</div>}
+                        {item.data.date && <div className="tt-trip-planner-item-detail">{item.data.date}</div>}
+                      </div>
+                      <select
+                        value={getItemDay(idx)}
+                        onChange={e => setItemDay(idx, Number(e.target.value))}
+                        style={{ width: '52px', padding: '0.25rem', borderRadius: '0.5rem', border: '1px solid var(--tt-purple)', fontSize: '0.75rem', color: 'var(--tt-navy)', background: 'white' }}
+                      >
+                        {Array.from({ length: numDays }, (_, i) => (
+                          <option key={i + 1} value={i + 1}>D{i + 1}</option>
+                        ))}
+                      </select>
+                      <button className="tt-trip-planner-remove" onClick={() => onRemoveItem(idx)}>✕</button>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
