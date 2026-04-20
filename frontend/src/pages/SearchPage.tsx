@@ -53,6 +53,7 @@ const SearchPage = () => {
   const [showTripPanel, setShowTripPanel] = useState(false);
   const [showWizard, setShowWizard] = useState(true);
   const [pendingFlight, setPendingFlight] = useState<any>(null);
+  const [pendingHotel, setPendingHotel] = useState<any>(null);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const q = params.get('q');
@@ -165,6 +166,14 @@ const SearchPage = () => {
 
   const handleAddToTrip = (item: Place | Event) => {
     const isPlace = 'address' in item;
+    // If on hotels tab, send to hotel slot instead of itinerary
+    if (activeTab === 'hotels' && isPlace) {
+      setPendingHotel({ name: (item as Place).name, address: (item as Place).address });
+      setMessage(`Added "${item.name}" to Where You're Staying`);
+      setMessageType('success');
+      setShowTripPanel(true);
+      return;
+    }
     setTripItems(prev => [...prev, { type: isPlace ? 'place' : 'event', data: item }]);
     setMessage(`Added "${item.name}" to your trip`);
     setMessageType('success');
@@ -349,6 +358,8 @@ const SearchPage = () => {
                   onOpenHotels={() => { setActiveTab('hotels'); setShowTripPanel(false); }}
                   pendingFlight={pendingFlight}
                   onFlightConsumed={() => setPendingFlight(null)}
+                  pendingHotel={pendingHotel}
+                  onHotelConsumed={() => setPendingHotel(null)}
                 />
               </div>
             </div>

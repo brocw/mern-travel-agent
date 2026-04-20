@@ -31,6 +31,8 @@ interface TripPlannerProps {
   onOpenHotels?: () => void;
   pendingFlight?: { direction: 'outbound' | 'return'; label: string; airline: string; price: string } | null;
   onFlightConsumed?: () => void;
+  pendingHotel?: { name: string; address: string } | null;
+  onHotelConsumed?: () => void;
 }
 
 const TripPlanner = ({
@@ -45,6 +47,8 @@ const TripPlanner = ({
   onOpenHotels,
   pendingFlight,
   onFlightConsumed,
+  pendingHotel,
+  onHotelConsumed,
 }: TripPlannerProps) => {
   const [outboundFlight, setOutboundFlight] = useState<FlightSlot>({ type: null });
   const [numDays, setNumDays] = useState(1);
@@ -64,21 +68,28 @@ const TripPlanner = ({
   }));
   const closeAll = () => { setShowOutboundOptions(false); setShowReturnOptions(false); setShowHotelOptions(false); };
   useEffect(() => {
-  if (pendingFlight) {
-    const slot: FlightSlot = {
-      type: 'flight',
-      label: pendingFlight.label,
-      airline: pendingFlight.airline,
-      price: pendingFlight.price,
-    };
-    if (pendingFlight.direction === 'outbound') {
-      setOutboundFlight(slot);
-    } else {
-      setReturnFlight(slot);
+    if (pendingFlight) {
+      const slot: FlightSlot = {
+        type: 'flight',
+        label: pendingFlight.label,
+        airline: pendingFlight.airline,
+        price: pendingFlight.price,
+      };
+      if (pendingFlight.direction === 'outbound') {
+        setOutboundFlight(slot);
+      } else {
+        setReturnFlight(slot);
+      }
+      onFlightConsumed?.();
     }
-    onFlightConsumed?.();
-  }
-}, [pendingFlight]);
+  }, [pendingFlight]);
+
+  useEffect(() => {
+    if (pendingHotel) {
+      setHotel({ type: 'hotel', name: pendingHotel.name, address: pendingHotel.address });
+      onHotelConsumed?.();
+    }
+  }, [pendingHotel]);
   const FlightSlotUI = ({
     slot,
     emptyLabel,
