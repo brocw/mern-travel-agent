@@ -166,8 +166,8 @@ const SearchPage = () => {
 
   const handleAddToTrip = (item: Place | Event) => {
     const isPlace = 'address' in item;
-    // If on hotels tab, send to hotel slot instead of itinerary
-    if (activeTab === 'hotels' && isPlace) {
+    // If it's a lodging/hotel, send to hotel slot
+    if (isPlace && (item as Place).type === 'lodging') {
       setPendingHotel({ name: (item as Place).name, address: (item as Place).address });
       setMessage(`Added "${item.name}" to Where You're Staying`);
       setMessageType('success');
