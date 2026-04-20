@@ -1,5 +1,4 @@
-import { useState } from 'react';
-
+import { useState, useEffect } from 'react';
 interface TripItem {
   type: 'place' | 'event';
   data: any;
@@ -30,6 +29,8 @@ interface TripPlannerProps {
   isOpen?: boolean;
   onOpenFlights?: () => void;
   onOpenHotels?: () => void;
+  pendingFlight?: { direction: 'outbound' | 'return'; label: string; airline: string; price: string } | null;
+  onFlightConsumed?: () => void;
 }
 
 const TripPlanner = ({
@@ -42,6 +43,8 @@ const TripPlanner = ({
   isOpen,
   onOpenFlights,
   onOpenHotels,
+  pendingFlight,
+  onFlightConsumed,
 }: TripPlannerProps) => {
   const [outboundFlight, setOutboundFlight] = useState<FlightSlot>({ type: null });
   const [numDays, setNumDays] = useState(1);
@@ -60,7 +63,22 @@ const TripPlanner = ({
     items: items.map((item, idx) => ({ item, idx })).filter(({ idx }) => getItemDay(idx) === day),
   }));
   const closeAll = () => { setShowOutboundOptions(false); setShowReturnOptions(false); setShowHotelOptions(false); };
-
+  useEffect(() => {
+  if (pendingFlight) {
+    const slot: FlightSlot = {
+      type: 'flight',
+      label: pendingFlight.label,
+      airline: pendingFlight.airline,
+      price: pendingFlight.price,
+    };
+    if (pendingFlight.direction === 'outbound') {
+      setOutboundFlight(slot);
+    } else {
+      setReturnFlight(slot);
+    }
+    onFlightConsumed?.();
+  }
+}, [pendingFlight]);
   const FlightSlotUI = ({
     slot,
     emptyLabel,

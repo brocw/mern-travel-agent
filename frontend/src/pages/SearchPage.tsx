@@ -52,6 +52,7 @@ const SearchPage = () => {
   const [activeTab, setActiveTab] = useState<Tab>('places');
   const [showTripPanel, setShowTripPanel] = useState(false);
   const [showWizard, setShowWizard] = useState(true);
+  const [pendingFlight, setPendingFlight] = useState<any>(null);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const q = params.get('q');
@@ -320,8 +321,14 @@ const SearchPage = () => {
                       defaultOutboundDate={startDate}
                       defaultReturnDate={endDate}
                       onAddToTrip={(flightData: any) => {
-                        setTripItems(prev => [...prev, { type: 'place' as const, data: flightData }]);
-                        setMessage(`Added flight to your trip`);
+                        const isReturn = flightData.name?.startsWith('Return:');
+                        setPendingFlight({
+                          direction: isReturn ? 'return' : 'outbound',
+                          label: flightData.name,
+                          airline: flightData.address,
+                          price: '',
+                        });
+                        setMessage(`Added flight to Getting There`);
                         setMessageType('success');
                         setShowTripPanel(true);
                       }}
@@ -340,6 +347,8 @@ const SearchPage = () => {
                   isOpen={showTripPanel}
                   onOpenFlights={() => { setActiveTab('flights'); setShowTripPanel(false); }}
                   onOpenHotels={() => { setActiveTab('hotels'); setShowTripPanel(false); }}
+                  pendingFlight={pendingFlight}
+                  onFlightConsumed={() => setPendingFlight(null)}
                 />
               </div>
             </div>
