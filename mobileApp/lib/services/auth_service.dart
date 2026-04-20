@@ -27,7 +27,9 @@ Uri _apiUri(String endpoint) {
 class AuthExpiredException implements Exception {
   final String message;
 
-  AuthExpiredException([this.message = 'Your session expired. Please log in again.']);
+  AuthExpiredException([
+    this.message = 'Your session expired. Please log in again.',
+  ]);
 
   @override
   String toString() => message;
@@ -36,7 +38,8 @@ class AuthExpiredException implements Exception {
 bool _isJwtExpiredError(String error) {
   final normalized = error.toLowerCase();
   return normalized.contains('jwt') &&
-      (normalized.contains('not longer valid') || normalized.contains('no longer valid'));
+      (normalized.contains('not longer valid') ||
+          normalized.contains('no longer valid'));
 }
 
 Map<String, dynamic>? _decodeJwtPayload(String token) {
@@ -123,7 +126,8 @@ Future<String?> login(String email, String password) async {
     throw Exception(backendError);
   }
 
-  final token = decodedBody['token'] ??
+  final token =
+      decodedBody['token'] ??
       decodedBody['accessToken'] ??
       decodedBody['access_token'];
 
@@ -132,10 +136,15 @@ Future<String?> login(String email, String password) async {
   }
 
   return token;
-
 }
 
-Future<void> register(String firstName, String lastName, String login, String email, String password) async {
+Future<void> register(
+  String firstName,
+  String lastName,
+  String login,
+  String email,
+  String password,
+) async {
   final response = await http.post(
     _apiUri('register'),
     headers: <String, String>{
@@ -201,17 +210,70 @@ Future<void> logout() async {
   await prefs.remove(_authLastNameKey);
 }
 
+Future<void> requestPasswordReset(String email) async {
+  final response = await http.post(
+    _apiUri('forgotPassword'),
+    headers: <String, String>{
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Accept': 'application/json',
+    },
+    body: jsonEncode(<String, String>{'email': email.trim()}),
+  );
+
+  if (response.statusCode != 200 && response.statusCode != 201) {
+    throw Exception('Failed to request password reset: ${response.statusCode}');
+  }
+
+  final decodedBody = jsonDecode(response.body);
+  if (decodedBody is! Map<String, dynamic>) {
+    throw Exception('Unexpected forgot password response format');
+  }
+
+  final String? backendError = decodedBody['error'] as String?;
+  if (backendError != null && backendError.isNotEmpty) {
+    throw Exception(backendError);
+  }
+}
+
+Future<void> resetPassword(String token, String newPassword) async {
+  final response = await http.post(
+    _apiUri('resetPassword'),
+    headers: <String, String>{
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Accept': 'application/json',
+    },
+    body: jsonEncode(<String, String>{
+      'token': token,
+      'newPassword': newPassword,
+    }),
+  );
+
+  if (response.statusCode != 200 && response.statusCode != 201) {
+    throw Exception('Failed to reset password: ${response.statusCode}');
+  }
+
+  final decodedBody = jsonDecode(response.body);
+  if (decodedBody is! Map<String, dynamic>) {
+    throw Exception('Unexpected reset password response format');
+  }
+
+  final String? backendError = decodedBody['error'] as String?;
+  if (backendError != null && backendError.isNotEmpty) {
+    throw Exception(backendError);
+  }
+}
+
 // Helper function to post to protected endpoints and refresh the token if needed
-Future<Map<String, dynamic>> postProtectedAndRefreshToken(String endpoint, Map<String, dynamic> body) async{
+Future<Map<String, dynamic>> postProtectedAndRefreshToken(
+  String endpoint,
+  Map<String, dynamic> body,
+) async {
   final token = await getToken();
   if (token == null) {
     throw Exception('No auth token found, please log in again.');
   }
-  
-  final payload = <String, dynamic>{
-    ...body,
-    'jwtToken': token,
-  };
+
+  final payload = <String, dynamic>{...body, 'jwtToken': token};
 
   final response = await http.post(
     _apiUri(endpoint),
@@ -225,7 +287,7 @@ Future<Map<String, dynamic>> postProtectedAndRefreshToken(String endpoint, Map<S
   if (response.statusCode != 200 && response.statusCode != 201) {
     throw Exception('Failed to post to $endpoint: ${response.statusCode}');
   }
-  
+
   final decodedBody = jsonDecode(response.body) as Map<String, dynamic>;
   final refreshed = decodedBody['jwtToken'];
   if (refreshed is String && refreshed.isNotEmpty) {
@@ -244,22 +306,40 @@ Future<Map<String, dynamic>> postProtectedAndRefreshToken(String endpoint, Map<S
 }
 
 Future<Map<String, dynamic>> searchLocation(String query) async {
-  return await postProtectedAndRefreshToken(
-    'searchLocation',
-    {'search': query.trim()},
-  );
+  return await postProtectedAndRefreshToken('searchLocation', {
+    'search': query.trim(),
+  });
 }
 
-Future<Map<String, dynamic>> getPlaces(double lat, double lng, {String type = 'all'}) async {
-  return await postProtectedAndRefreshToken('getPlaces', {'lat': lat,'lng': lng,'type': type});
+Future<Map<String, dynamic>> getPlaces(
+  double lat,
+  double lng, {
+  String type = 'all',
+}) async {
+  return await postProtectedAndRefreshToken('getPlaces', {
+    'lat': lat,
+    'lng': lng,
+    'type': type,
+  });
 }
 
-Future<Map<String, dynamic>> getEvents(String location, String startDate, String endDate) async {
-  return await postProtectedAndRefreshToken('getEvents',{'location': location.trim(), 'startDate': startDate, 'endDate': endDate});
+Future<Map<String, dynamic>> getEvents(
+  String location,
+  String startDate,
+  String endDate,
+) async {
+  return await postProtectedAndRefreshToken('getEvents', {
+    'location': location.trim(),
+    'startDate': startDate,
+    'endDate': endDate,
+  });
 }
 
 Future<Map<String, dynamic>> createTrip(int userId, String location) async {
-  return await postProtectedAndRefreshToken('createTrip', {'userId': userId, 'location': location.trim()});
+  return await postProtectedAndRefreshToken('createTrip', {
+    'userId': userId,
+    'location': location.trim(),
+  });
 }
 
 Future<Map<String, dynamic>> getTrips(int userId) async {
@@ -278,16 +358,44 @@ Future<Map<String, dynamic>> addToTrip(
   });
 }
 
-Future<Map<String, dynamic>> removeFromTrip(int userId, String tripId, int itemIndex) async {
-  return await postProtectedAndRefreshToken('removeFromTrip', {'userId': userId, 'tripId': tripId.trim(), 'itemIndex': itemIndex});
+Future<Map<String, dynamic>> removeFromTrip(
+  int userId,
+  String tripId,
+  int itemIndex,
+) async {
+  return await postProtectedAndRefreshToken('removeFromTrip', {
+    'userId': userId,
+    'tripId': tripId.trim(),
+    'itemIndex': itemIndex,
+  });
 }
 
 Future<Map<String, dynamic>> deleteTrip(int userId, String tripId) async {
-  return await postProtectedAndRefreshToken('deleteTrip', {'userId': userId, 'tripId': tripId.trim()});
+  return await postProtectedAndRefreshToken('deleteTrip', {
+    'userId': userId,
+    'tripId': tripId.trim(),
+  });
 }
 
-Future<Map<String, dynamic>> searchFlights(String departureId,String arrivalId,String outboundDate, {String returnDate = '', String tripType = '1', int adults = 1, String travelClass = '1', String departureToken = '', String bookingToken = ''}) async {
-  final payload = <String, dynamic>{'departureId': departureId.trim(), 'arrivalId': arrivalId.trim(), 'outboundDate': outboundDate.trim(), 'tripType': tripType, 'adults': adults, 'travelClass': travelClass};
+Future<Map<String, dynamic>> searchFlights(
+  String departureId,
+  String arrivalId,
+  String outboundDate, {
+  String returnDate = '',
+  String tripType = '1',
+  int adults = 1,
+  String travelClass = '1',
+  String departureToken = '',
+  String bookingToken = '',
+}) async {
+  final payload = <String, dynamic>{
+    'departureId': departureId.trim(),
+    'arrivalId': arrivalId.trim(),
+    'outboundDate': outboundDate.trim(),
+    'tripType': tripType,
+    'adults': adults,
+    'travelClass': travelClass,
+  };
 
   if (returnDate.trim().isNotEmpty) {
     payload['returnDate'] = returnDate.trim();

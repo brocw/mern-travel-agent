@@ -1534,7 +1534,6 @@ class _MyAppState extends State<MyApp> {
             ),
     );
   }
-
 }
 
 class _TriptasticWordmark extends StatelessWidget {
@@ -1554,7 +1553,7 @@ class _TriptasticWordmark extends StatelessWidget {
         ? const Color(0xFFFFFFFF)
         : const Color(0xFF1E2A4A);
     final Color tasticColor = onDark
-      ? const Color(0xFF5D83A8)
+        ? const Color(0xFF5D83A8)
         : const Color(0xFF5D83A8);
     final List<Shadow> shadows = showShadow
         ? const <Shadow>[
@@ -1576,8 +1575,14 @@ class _TriptasticWordmark extends StatelessWidget {
           shadows: shadows,
         ),
         children: <InlineSpan>[
-          TextSpan(text: 'Trip', style: TextStyle(color: tripColor)),
-          TextSpan(text: 'tastic!', style: TextStyle(color: tasticColor)),
+          TextSpan(
+            text: 'Trip',
+            style: TextStyle(color: tripColor),
+          ),
+          TextSpan(
+            text: 'tastic!',
+            style: TextStyle(color: tasticColor),
+          ),
         ],
       ),
     );
@@ -1829,6 +1834,118 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _rememberMe = true;
+
+  void _showForgotPasswordDialog() {
+    final TextEditingController emailController = TextEditingController(
+      text: _usernameController.text.trim().contains('@')
+          ? _usernameController.text.trim()
+          : '',
+    );
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            return AlertDialog(
+              title: const Text('Reset Password'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      'Enter the email associated with your account.',
+                      style: TextStyle(height: 1.4),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        hintText: 'you@example.com',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () {
+                          Navigator.of(dialogContext).pop();
+                        },
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          final ScaffoldMessengerState messenger =
+                              ScaffoldMessenger.of(this.context);
+                          final NavigatorState navigator = Navigator.of(
+                            dialogContext,
+                          );
+                          final String email = emailController.text.trim();
+                          if (email.isEmpty) {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Please enter your email.'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isSubmitting = true;
+                          });
+
+                          try {
+                            await requestPasswordReset(email);
+                            if (!mounted) {
+                              return;
+                            }
+                            navigator.pop();
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'If that email exists, a reset link has been sent.',
+                                ),
+                              ),
+                            );
+                          } catch (e) {
+                            if (!mounted) {
+                              return;
+                            }
+                            setDialogState(() {
+                              isSubmitting = false;
+                            });
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('Password reset failed: $e'),
+                              ),
+                            );
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Send Link'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   void _showRegisterDialog() {
     final TextEditingController firstNameController = TextEditingController();
@@ -2103,7 +2220,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             TextButton(
-                              onPressed: () {},
+                              onPressed: _showForgotPasswordDialog,
                               child: const Text('Forgot password?'),
                             ),
                           ],
@@ -2150,9 +2267,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 18),
-                        const Center(
-                          child: _TriptasticWordmark(fontSize: 20),
-                        ),
+                        const Center(child: _TriptasticWordmark(fontSize: 20)),
                       ],
                     ),
                   ),
@@ -3487,7 +3602,9 @@ class _TransportationScreenState extends State<TransportationScreen> {
     });
 
     final List<_StoredTransportPlan> currentPlans = _storedTransportPlans();
-    final TransportationChoice deletedChoice = _choiceForItemType(plan.itemType);
+    final TransportationChoice deletedChoice = _choiceForItemType(
+      plan.itemType,
+    );
     final bool hasSameTypeAfterDelete = currentPlans.any(
       (_StoredTransportPlan existing) =>
           existing.backendIndex != plan.backendIndex &&
@@ -4535,7 +4652,8 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
       }
 
       if (itemType == 'undecided') {
-        final String name = data['name']?.toString() ?? 'Transportation undecided';
+        final String name =
+            data['name']?.toString() ?? 'Transportation undecided';
         return <String, dynamic>{
           'mode': 'undecided',
           'title': 'Undecided Plan',
@@ -4810,14 +4928,14 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
     final String name = info['name']?.toString() ?? '';
     final String outboundRoute = info['outboundRoute']?.toString() ?? '';
     final String outboundDepartureTime =
-      info['outboundDepartureTime']?.toString() ?? '';
+        info['outboundDepartureTime']?.toString() ?? '';
     final String outboundArrivalTime =
-      info['outboundArrivalTime']?.toString() ?? '';
+        info['outboundArrivalTime']?.toString() ?? '';
     final String returnRoute = info['returnRoute']?.toString() ?? '';
     final String returnDepartureTime =
-      info['returnDepartureTime']?.toString() ?? '';
+        info['returnDepartureTime']?.toString() ?? '';
     final String returnArrivalTime =
-      info['returnArrivalTime']?.toString() ?? '';
+        info['returnArrivalTime']?.toString() ?? '';
     final String airline = info['airline']?.toString() ?? '';
 
     return Container(
@@ -4865,28 +4983,26 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
           ),
           if (outboundRoute.trim().isNotEmpty ||
               outboundDepartureTime.trim().isNotEmpty ||
-              outboundArrivalTime.trim().isNotEmpty)
-            ...<Widget>[
-              const SizedBox(height: 12),
-              _flightLegCard(
-                title: 'Outbound',
-                route: outboundRoute,
-                departureTime: outboundDepartureTime,
-                arrivalTime: outboundArrivalTime,
-              ),
-            ],
+              outboundArrivalTime.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            _flightLegCard(
+              title: 'Outbound',
+              route: outboundRoute,
+              departureTime: outboundDepartureTime,
+              arrivalTime: outboundArrivalTime,
+            ),
+          ],
           if (returnRoute.trim().isNotEmpty ||
               returnDepartureTime.trim().isNotEmpty ||
-              returnArrivalTime.trim().isNotEmpty)
-            ...<Widget>[
-              const SizedBox(height: 8),
-              _flightLegCard(
-                title: 'Return',
-                route: returnRoute,
-                departureTime: returnDepartureTime,
-                arrivalTime: returnArrivalTime,
-              ),
-            ],
+              returnArrivalTime.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            _flightLegCard(
+              title: 'Return',
+              route: returnRoute,
+              departureTime: returnDepartureTime,
+              arrivalTime: returnArrivalTime,
+            ),
+          ],
           if (outboundRoute.trim().isEmpty &&
               outboundDepartureTime.trim().isEmpty &&
               outboundArrivalTime.trim().isEmpty &&
