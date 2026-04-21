@@ -37,7 +37,7 @@ exports.setApp = function (app, client) {
     try {
       // Find the max userId in the DB
       const topUser = await db.collection("Users").findOne({}, { sort: { UserId: -1 } });
-      const newUserId = topUser.UserId + 1;
+      const newUserId = topUser?.UserId != null ? topUser.UserId + 1 : 1;
 
       const saltRounds = 10;
       const salt = await bcrypt.genSalt(saltRounds);
