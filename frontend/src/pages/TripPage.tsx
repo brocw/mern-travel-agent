@@ -106,8 +106,16 @@ const TripPage = () => {
     window.location.href = '/';
   };
 
-  const typeIcon = (type: string) => type === 'place' ? '📍' : '🎟️';
-  const typeLabel = (type: string) => type === 'place' ? 'Place' : 'Event';
+  const typeIcon = (type: string, dataType?: string) => {
+    if (dataType === 'flight') return '✈️';
+    if (dataType === 'hotel') return '🏨';
+    return type === 'place' ? '📍' : '🎟️';
+  };
+  const typeLabel = (type: string, dataType?: string) => {
+    if (dataType === 'flight') return 'Flight';
+    if (dataType === 'hotel') return 'Hotel';
+    return type === 'place' ? 'Place' : 'Event';
+  };
 
   return (
     <div className="tt-trips-page">
@@ -212,9 +220,30 @@ const TripPage = () => {
                     {trip.Items.length === 0 ? (
                       <p className="tt-trip-items-empty">No items added yet.</p>
                     ) : (() => {
-                      const maxDay = Math.max(1, ...trip.Items.map((item: any) => item.day || 1));
+                      const maxDay = Math.max(1, ...trip.Items.filter((item: any) => (item.day || 1) > 0).map((item: any) => item.day || 1));
+                      const travelItems = trip.Items.map((item, idx) => ({ item, idx })).filter(({ item }: any) => (item.day || 1) === 0 || item.day === 999);
                       const days = Array.from({ length: maxDay }, (_, i) => i + 1);
-                      return days.map(day => {
+                      return (
+                        <>
+                          {travelItems.length > 0 && (
+                            <div>
+                              <div style={{ padding: '0.5rem 0.75rem', margin: '0.5rem 0 0.25rem', background: 'var(--tt-ice)', borderRadius: '0.5rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--tt-navy)', letterSpacing: '0.03em' }}>
+                                Travel & Accommodation
+                              </div>
+                              {travelItems.map(({ item, idx }) => (
+                                <div key={idx} className="tt-trip-item">
+                                  <div className="tt-trip-item-icon">{typeIcon(item.type, item.data?.type)}</div>
+                                  <div className="tt-trip-item-body">
+                                    <div className="tt-trip-item-type">{typeLabel(item.type, item.data?.type)}</div>
+                                    <div className="tt-trip-item-name">{item.data.name || item.data}</div>
+                                    {item.data.address && <div className="tt-trip-item-detail">📍 {item.data.address}</div>}
+                                  </div>
+                                  <button className="tt-trip-item-remove" onClick={() => handleRemoveItem(trip._id, idx)} title="Remove item">✕</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {days.map(day => {
                         const dayItems = trip.Items.map((item, idx) => ({ item, idx })).filter(({ item }: any) => (item.day || 1) === day);
                         return (
                           <div key={day}>
@@ -226,9 +255,9 @@ const TripPage = () => {
                             ) : (
                               dayItems.map(({ item, idx }) => (
                                 <div key={idx} className="tt-trip-item">
-                                  <div className="tt-trip-item-icon">{typeIcon(item.type)}</div>
+                                  <div className="tt-trip-item-icon">{typeIcon(item.type, item.data?.type)}</div>
                                   <div className="tt-trip-item-body">
-                                    <div className="tt-trip-item-type">{typeLabel(item.type)}</div>
+                                    <div className="tt-trip-item-type">{typeLabel(item.type, item.data?.type)}</div>
                                     <div className="tt-trip-item-name">{item.data.name || item.data}</div>
                                     {item.data.address && (
                                       <div className="tt-trip-item-detail">📍 {item.data.address}</div>
@@ -252,7 +281,9 @@ const TripPage = () => {
                             )}
                           </div>
                         );
-                      });
+                      })}
+                    </>
+                  );
                     })()}
                   </div>
                 )}
