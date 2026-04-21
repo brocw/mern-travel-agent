@@ -85,7 +85,6 @@ const SearchPage = () => {
     setPlaces([]);
     setHotels([]);
     setEvents([]);
-    setTripItems([]);
     setLocation(null);
 
     try {
