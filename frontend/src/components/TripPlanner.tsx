@@ -330,7 +330,13 @@ const TripPlanner = ({
 
           <button
             className="tt-trip-planner-save-btn"
-            onClick={() => onCreateTrip(location, items)}
+            onClick={() => {
+              const itemsWithDays = items.map((item, idx) => ({
+                ...item,
+                day: getItemDay(idx),
+              }));
+              onCreateTrip(location, itemsWithDays);
+            }}
             disabled={!location || items.length === 0 || saving}
           >
             {saving ? (
