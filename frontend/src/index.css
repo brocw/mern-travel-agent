@@ -390,7 +390,7 @@ input, select, textarea { font-family: inherit; }
 }
 
 .th-section-sub {
-  color: var(--tt-muted);
+  color: #4a5568;
   font-size: 1.05rem;
   margin-top: 0.75rem;
 }
@@ -474,7 +474,7 @@ input, select, textarea { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  color: var(--tt-steel);
+  color: var(--tt-navy);
   font-weight: 600;
   font-size: 0.9rem;
   transition: color 0.2s;
@@ -627,7 +627,7 @@ input, select, textarea { font-family: inherit; }
   border-top: 1px solid #EBEBEB;
   padding: 2rem 1.5rem;
   text-align: center;
-  color: var(--tt-subtle);
+  color: #4A5568;
   font-size: 0.85rem;
   background: #ffffff;
 }
