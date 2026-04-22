@@ -330,25 +330,7 @@ const TripPlanner = ({
 
           <button
             className="tt-trip-planner-save-btn"
-            onClick={() => {
-              const itemsWithDays = items.map((item, idx) => ({
-                ...item,
-                day: getItemDay(idx),
-              }));
-
-              // Add flight and hotel slots as items
-              if (outboundFlight.type === 'flight') {
-                itemsWithDays.unshift({ type: 'place' as const, data: { name: outboundFlight.label, address: outboundFlight.airline, type: 'flight' }, day: 0 });
-              }
-              if (returnFlight.type === 'flight') {
-                itemsWithDays.push({ type: 'place' as const, data: { name: returnFlight.label, address: returnFlight.airline, type: 'flight' }, day: 999 });
-              }
-              if (hotel.type === 'hotel') {
-                itemsWithDays.unshift({ type: 'place' as const, data: { name: hotel.name, address: hotel.address, type: 'hotel' }, day: 0 });
-              }
-
-              onCreateTrip(location, itemsWithDays);
-            }}
+            onClick={() => onCreateTrip(location, items)}
             disabled={!location || items.length === 0 || saving}
           >
             {saving ? (
