@@ -235,6 +235,12 @@ const TripPage = () => {
                             {item.data.venue && (
                               <div className="tt-trip-item-detail">🎤 {item.data.venue}</div>
                             )}
+                            {item.data.ticketUrl && (
+                              <a href={item.data.ticketUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: 'var(--tt-steel)', fontWeight: 600, textDecoration: 'underline', marginTop: '0.25rem', display: 'inline-block' }}>🎟️ View Tickets</a>
+                            )}
+                            {item.data.type === 'flight' && item.data.bookingUrl && (
+                              <a href={item.data.bookingUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: 'var(--tt-steel)', fontWeight: 600, textDecoration: 'underline', marginTop: '0.25rem', display: 'inline-block' }}>✈️ Book Flight</a>
+                            )}
                           </div>
                           <button
                             className="tt-trip-item-remove"
