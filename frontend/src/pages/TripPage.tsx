@@ -111,6 +111,7 @@ const TripPage = () => {
     if (dataType === 'hotel') return '🏨';
     return type === 'place' ? '📍' : '🎟️';
   };
+
   const typeLabel = (type: string, dataType?: string) => {
     if (dataType === 'flight') return 'Flight';
     if (dataType === 'hotel') return 'Hotel';
@@ -120,7 +121,6 @@ const TripPage = () => {
   return (
     <div className="tt-trips-page">
 
-      {/* ── Navbar ── */}
       <nav className="tt-trips-nav">
         <div className="tt-trips-nav-inner">
           <a href="/account" className="tt-trips-nav-brand">
@@ -131,22 +131,16 @@ const TripPage = () => {
           <div className="tt-trips-nav-links">
             <a href="/search" className="tt-trips-nav-link">🔍 Explore</a>
             <a href="/trips" className="tt-trips-nav-link active">🗺️ My Trips</a>
+            <a href="/account" className="tt-trips-nav-link">👤 Account</a>
           </div>
           <div className="tt-trips-nav-right">
-            <span className="tt-trips-nav-user">
-              👤 {user?.firstName} {user?.lastName}
-            </span>
-            <button className="tt-trips-nav-logout" onClick={doLogout}>
-              Log Out
-            </button>
+            <span className="tt-trips-nav-user">👤 {user?.firstName} {user?.lastName}</span>
+            <button className="tt-trips-nav-logout" onClick={doLogout}>Log Out</button>
           </div>
         </div>
       </nav>
 
-      {/* ── Page content ── */}
       <div className="tt-trips-content">
-
-        {/* Header */}
         <div className="tt-trips-header">
           <div>
             <h1 className="tt-trips-title">My Trips</h1>
@@ -154,41 +148,32 @@ const TripPage = () => {
               {loading ? 'Loading your adventures...' : `${trips.length} trip${trips.length !== 1 ? 's' : ''} planned`}
             </p>
           </div>
-          <a href="/search" className="tt-trips-new-btn">
-            + Plan New Trip
-          </a>
+          <a href="/search" className="tt-trips-new-btn">+ Plan New Trip</a>
         </div>
 
-        {/* Toast message */}
         {message && (
           <div className={`tt-trips-toast ${messageType === 'error' ? 'tt-trips-toast-error' : 'tt-trips-toast-success'}`}>
             {messageType === 'success' ? '✓' : '⚠'} {message}
           </div>
         )}
 
-        {/* Loading */}
         {loading ? (
           <div className="tt-trips-loading">
             <div className="tt-trips-spinner" />
             <p>Loading your trips...</p>
           </div>
         ) : trips.length === 0 ? (
-          /* Empty state */
           <div className="tt-trips-empty">
             <div className="tt-trips-empty-icon">🗺️</div>
             <h2>No trips yet</h2>
             <p>Search for a destination and start building your itinerary.</p>
-            <a href="/search" className="tt-trips-new-btn">
-              Plan Your First Trip
-            </a>
+            <a href="/search" className="tt-trips-new-btn">Plan Your First Trip</a>
           </div>
         ) : (
-          /* Trip cards */
           <div className="tt-trips-grid">
             {trips.map((trip) => (
               <div key={trip._id} className="tt-trip-card">
 
-                {/* Card header */}
                 <div className="tt-trip-card-header">
                   <div className="tt-trip-card-icon">✈️</div>
                   <div className="tt-trip-card-info">
@@ -202,10 +187,8 @@ const TripPage = () => {
                   </span>
                 </div>
 
-                {/* Divider */}
                 <div className="tt-trip-card-divider" />
 
-                {/* Items toggle */}
                 <button
                   className="tt-trip-card-toggle"
                   onClick={() => setExpandedTrip(expandedTrip === trip._id ? null : trip._id)}
@@ -214,69 +197,44 @@ const TripPage = () => {
                   <span className="tt-trip-toggle-arrow">{expandedTrip === trip._id ? '▲' : '▼'}</span>
                 </button>
 
-                {/* Expanded items */}
                 {expandedTrip === trip._id && (
                   <div className="tt-trip-items">
                     {trip.Items.length === 0 ? (
                       <p className="tt-trip-items-empty">No items added yet.</p>
                     ) : (
-                      trip.Items.map((item, index) => (
-                        <div key={index} className="tt-trip-item">
+                      trip.Items.map((item, idx) => (
+                        <div key={idx} className="tt-trip-item">
                           <div className="tt-trip-item-icon">{typeIcon(item.type, item.data?.type)}</div>
                           <div className="tt-trip-item-body">
                             <div className="tt-trip-item-type">{typeLabel(item.type, item.data?.type)}</div>
                             <div className="tt-trip-item-name">{item.data.name || item.data}</div>
-                            {item.data.address && (
-                              <div className="tt-trip-item-detail">📍 {item.data.address}</div>
-                            )}
-                            {item.data.date && (
-                              <div className="tt-trip-item-detail">📅 {item.data.date}</div>
-                            )}
-                            {item.data.venue && (
-                              <div className="tt-trip-item-detail">🎤 {item.data.venue}</div>
-                            )}
-                            {item.data.ticketUrl && (
-                              <a href={item.data.ticketUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: 'var(--tt-steel)', fontWeight: 600, textDecoration: 'underline', marginTop: '0.25rem', display: 'inline-block' }}>🎟️ View Tickets</a>
-                            )}
-                            {item.data.type === 'flight' && item.data.bookingUrl && (
-                              <a href={item.data.bookingUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: 'var(--tt-steel)', fontWeight: 600, textDecoration: 'underline', marginTop: '0.25rem', display: 'inline-block' }}>✈️ Book Flight</a>
-                            )}
+                            {item.data.address && <div className="tt-trip-item-detail">📍 {item.data.address}</div>}
+                            {item.data.date && <div className="tt-trip-item-detail">📅 {item.data.date}</div>}
+                            {item.data.venue && <div className="tt-trip-item-detail">🎤 {item.data.venue}</div>}
                           </div>
                           <button
                             className="tt-trip-item-remove"
-                            onClick={() => handleRemoveItem(trip._id, index)}
+                            onClick={() => handleRemoveItem(trip._id, idx)}
                             title="Remove item"
-                          >
-                            ✕
-                          </button>
+                          >✕</button>
                         </div>
                       ))
                     )}
                   </div>
                 )}
-                <a href={`/search?q=${encodeURIComponent(trip.Location)}&tripId=${trip._id}`}
+
+                <a
+                  href={`/search?q=${encodeURIComponent(trip.Location)}&tripId=${trip._id}`}
                   style={{
-                    display: 'block',
-                    width: '100%',
-                    padding: '0.75rem',
-                    borderRadius: '0.875rem',
-                    background: 'var(--tt-navy)',
-                    color: 'white',
-                    fontWeight: 600,
-                    fontSize: '0.875rem',
-                    textAlign: 'center',
-                    textDecoration: 'none',
-                    marginBottom: '0.5rem',
-                    transition: 'all 0.2s',
+                    display: 'block', width: '100%', padding: '0.75rem', borderRadius: '0.875rem',
+                    background: 'var(--tt-navy)', color: 'white', fontWeight: 600, fontSize: '0.875rem',
+                    textAlign: 'center', textDecoration: 'none', marginBottom: '0.5rem', transition: 'all 0.2s',
                   }}
                 >
                   ✏️ Add More Items
                 </a>
-                {/* Delete button */}
-                <button
-                  className="tt-trip-card-delete"
-                  onClick={() => handleDeleteTrip(trip._id)}
-                >
+
+                <button className="tt-trip-card-delete" onClick={() => handleDeleteTrip(trip._id)}>
                   🗑 Delete Trip
                 </button>
 

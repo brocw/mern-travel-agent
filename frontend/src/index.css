@@ -2420,3 +2420,31 @@ input, select, textarea { font-family: inherit; }
   color: #DC2626;
   border-color: #FECACA;
 }
+
+/* ============================================================
+   BACKGROUND FIX — stronger contrast between page & cards
+   ============================================================ */
+
+
+.tt-trips-page {
+  background: linear-gradient(180deg, #e2ecf8 0%, #d8e6f5 60%, #cee0f2 100%) !important;
+}
+
+.tt-search-page {
+  background: linear-gradient(180deg, #e2ecf8 0%, #d8e6f5 60%, #cee0f2 100%) !important;
+}
+
+.tt-account-page {
+  background: linear-gradient(180deg, #e2ecf8 0%, #d8e6f5 60%, #cee0f2 100%) !important;
+}
+
+/* Make sure cards stay white and visible */
+.tt-trip-card,
+.tt-account-hero,
+.tt-account-card,
+.tt-account-quick,
+.tt-wizard-mode-card,
+.tt-wizard-rec-card {
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgba(58, 79, 138, 0.12);
+}

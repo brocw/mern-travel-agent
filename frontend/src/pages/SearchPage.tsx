@@ -50,26 +50,69 @@ const SearchPage = () => {
   const [hotelsLoading, setHotelsLoading] = useState(false);
   const [savingTrip, setSavingTrip] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('places');
-  const [showTripPanel, setShowTripPanel] = useState(false);
+  const [showTripPanel, setShowTripPanel] = useState(true);
   const [showWizard, setShowWizard] = useState(true);
   const [pendingFlight, setPendingFlight] = useState<any>(null);
   const [pendingHotel, setPendingHotel] = useState<any>(null);
   const [existingTripId, setExistingTripId] = useState<string | null>(null);
 
+  const userData = localStorage.getItem('user_data');
+  const user = userData ? JSON.parse(userData) : null;
+  const getToken = () => getAccessToken();
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const q = params.get('q');
     const tripId = params.get('tripId');
-    if (tripId) setExistingTripId(tripId);
+
+    if (tripId) {
+      setExistingTripId(tripId);
+      loadExistingTrip(tripId);
+    }
     if (q) {
       setShowWizard(false);
       runSearch(q);
     }
   }, []);
 
-  const userData = localStorage.getItem('user_data');
-  const user = userData ? JSON.parse(userData) : null;
-  const getToken = () => getAccessToken();
+  const loadExistingTrip = async (tripId: string) => {
+    try {
+      const response = await fetch(buildPath('api/getTrips'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id, jwtToken: getToken() }),
+      });
+      const data = await response.json();
+      if (data.trips) {
+        const trip = data.trips.find((t: any) => t._id === tripId);
+        if (trip && trip.Items) {
+          // Separate regular items from flights and hotels
+          const regularItems = trip.Items.filter(
+            (item: any) => item.data?.type !== 'flight' && item.data?.type !== 'hotel'
+          );
+          setTripItems(regularItems);
+
+          // Find outbound/return flights and hotel to restore into planner slots
+          const outbound = trip.Items.find(
+            (item: any) => item.data?.type === 'flight' && !item.data?.name?.startsWith('Return:')
+          );
+          const returnF = trip.Items.find(
+            (item: any) => item.data?.type === 'flight' && item.data?.name?.startsWith('Return:')
+          );
+          const hotelItem = trip.Items.find(
+            (item: any) => item.data?.type === 'hotel'
+          );
+
+          if (outbound) setPendingFlight({ direction: 'outbound', label: outbound.data.name, airline: outbound.data.address, price: '' });
+          if (returnF) setPendingFlight({ direction: 'return', label: returnF.data.name, airline: returnF.data.address, price: '' });
+          if (hotelItem) setPendingHotel({ name: hotelItem.data.name, address: hotelItem.data.address });
+        }
+        if (data.jwtToken) storeToken({ accessToken: data.jwtToken });
+      }
+    } catch (e) {
+      console.log('Error loading existing trip:', e);
+    }
+  };
 
   const doLogout = () => {
     localStorage.removeItem('user_data');
@@ -238,25 +281,31 @@ const SearchPage = () => {
 
   return (
     <div className="tt-search-page">
-      <nav className="tt-search-nav">
-        <div className="tt-search-nav-inner">
-          <a href="/account" className="tt-search-nav-brand">
-            <span className="tt-search-nav-brand-trip">Trip</span>
-            <span className="tt-search-nav-brand-tastic">tastic!</span>
+
+      <nav className="tt-trips-nav">
+        <div className="tt-trips-nav-inner">
+          <a href="/account" className="tt-trips-nav-brand">
+            <span style={{ color: 'var(--tt-navy)', fontWeight: 900, fontSize: '1.4rem', letterSpacing: '-0.03em' }}>
+              Trip<span style={{ color: 'var(--tt-steel)' }}>tastic!</span>
+            </span>
           </a>
-          <div className="tt-search-nav-links">
-            <a href="/search" className="tt-search-nav-link active">🔍 Explore</a>
-            <a href="/trips" className="tt-search-nav-link">🗺️ My Trips</a>
-            <a href="/account" className="tt-search-nav-link">👤 Account</a>
+          <div className="tt-trips-nav-links">
+            <a href="/search" className="tt-trips-nav-link active">🔍 Explore</a>
+            <a href="/trips" className="tt-trips-nav-link">🗺️ My Trips</a>
+            <a href="/account" className="tt-trips-nav-link">👤 Account</a>
           </div>
-          <div className="tt-search-nav-right">
-            {tripItems.length > 0 && (
-              <button className="tt-search-trip-btn" onClick={() => setShowTripPanel(p => !p)}>
-                🧳 Trip ({tripItems.length})
+          <div className="tt-trips-nav-right">
+            {location && (
+              <button
+                className="tt-search-trip-btn"
+                onClick={() => setShowTripPanel(p => !p)}
+              >
+                🧳 {showTripPanel ? 'Hide Planner' : 'Show Planner'}
+                {tripItems.length > 0 && ` (${tripItems.length})`}
               </button>
             )}
-            <span className="tt-search-nav-user">👤 {user?.firstName} {user?.lastName}</span>
-            <button className="tt-search-nav-logout" onClick={doLogout}>Log Out</button>
+            <span className="tt-trips-nav-user">👤 {user?.firstName} {user?.lastName}</span>
+            <button className="tt-trips-nav-logout" onClick={doLogout}>Log Out</button>
           </div>
         </div>
       </nav>
@@ -355,6 +404,7 @@ const SearchPage = () => {
                   )}
                 </div>
               </div>
+
               <div className={`tt-search-sidebar ${showTripPanel ? 'open' : ''}`}>
                 <TripPlanner
                   location={location.name}
