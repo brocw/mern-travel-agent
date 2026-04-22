@@ -220,8 +220,8 @@ const TripPage = () => {
                     {trip.Items.length === 0 ? (
                       <p className="tt-trip-items-empty">No items added yet.</p>
                     ) : (() => {
-                      const maxDay = Math.max(1, ...trip.Items.filter((item: any) => item.day > 0 && item.day < 999).map((item: any) => item.day));
-                      const travelItems = trip.Items.map((item, idx) => ({ item, idx })).filter(({ item }: any) => item.day === 0 || item.day === 999 || item.data?.type === 'flight' || item.data?.type === 'hotel');
+                      const maxDay = Math.max(1, ...trip.Items.filter((item: any) => (item.day || 1) > 0).map((item: any) => item.day || 1));
+                      const travelItems = trip.Items.map((item, idx) => ({ item, idx })).filter(({ item }: any) => (item.day || 1) === 0 || item.day === 999);
                       const days = Array.from({ length: maxDay }, (_, i) => i + 1);
                       return (
                         <>
@@ -244,7 +244,7 @@ const TripPage = () => {
                             </div>
                           )}
                           {days.map(day => {
-                        const dayItems = trip.Items.map((item, idx) => ({ item, idx })).filter(({ item }: any) => item.day === day && item.data?.type !== 'flight' && item.data?.type !== 'hotel');
+                        const dayItems = trip.Items.map((item, idx) => ({ item, idx })).filter(({ item }: any) => (item.day || 1) === day);
                         return (
                           <div key={day}>
                             <div style={{ padding: '0.5rem 0.75rem', margin: '0.5rem 0 0.25rem', background: 'var(--tt-ice)', borderRadius: '0.5rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--tt-navy)', letterSpacing: '0.03em' }}>
