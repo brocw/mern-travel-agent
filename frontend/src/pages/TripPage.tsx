@@ -220,8 +220,7 @@ const TripPage = () => {
                     {trip.Items.length === 0 ? (
                       <p className="tt-trip-items-empty">No items added yet.</p>
                     ) : (() => {
-                      const regularItems = trip.Items.filter((item: any) => item.day > 0 && item.day < 999);
-                      const maxDay = regularItems.length > 0 ? Math.max(...regularItems.map((item: any) => item.day)) : 1;
+                      const maxDay = Math.max(1, ...trip.Items.filter((item: any) => item.day > 0 && item.day < 999).map((item: any) => item.day));
                       const travelItems = trip.Items.map((item, idx) => ({ item, idx })).filter(({ item }: any) => item.day === 0 || item.day === 999 || item.data?.type === 'flight' || item.data?.type === 'hotel');
                       const days = Array.from({ length: maxDay }, (_, i) => i + 1);
                       return (
