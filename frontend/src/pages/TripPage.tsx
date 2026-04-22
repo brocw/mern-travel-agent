@@ -106,8 +106,16 @@ const TripPage = () => {
     window.location.href = '/';
   };
 
-  const typeIcon = (type: string) => type === 'place' ? '📍' : '🎟️';
-  const typeLabel = (type: string) => type === 'place' ? 'Place' : 'Event';
+  const typeIcon = (type: string, dataType?: string) => {
+    if (dataType === 'flight') return '✈️';
+    if (dataType === 'hotel') return '🏨';
+    return type === 'place' ? '📍' : '🎟️';
+  };
+  const typeLabel = (type: string, dataType?: string) => {
+    if (dataType === 'flight') return 'Flight';
+    if (dataType === 'hotel') return 'Hotel';
+    return type === 'place' ? 'Place' : 'Event';
+  };
 
   return (
     <div className="tt-trips-page">
@@ -214,9 +222,9 @@ const TripPage = () => {
                     ) : (
                       trip.Items.map((item, index) => (
                         <div key={index} className="tt-trip-item">
-                          <div className="tt-trip-item-icon">{typeIcon(item.type)}</div>
+                          <div className="tt-trip-item-icon">{typeIcon(item.type, item.data?.type)}</div>
                           <div className="tt-trip-item-body">
-                            <div className="tt-trip-item-type">{typeLabel(item.type)}</div>
+                            <div className="tt-trip-item-type">{typeLabel(item.type, item.data?.type)}</div>
                             <div className="tt-trip-item-name">{item.data.name || item.data}</div>
                             {item.data.address && (
                               <div className="tt-trip-item-detail">📍 {item.data.address}</div>

@@ -330,8 +330,20 @@ const TripPlanner = ({
 
           <button
             className="tt-trip-planner-save-btn"
-            onClick={() => onCreateTrip(location, items)}
-            disabled={!location || items.length === 0 || saving}
+            onClick={() => {
+              const allItems = [...items];
+              if (outboundFlight.type === 'flight') {
+                allItems.unshift({ type: 'place', data: { name: outboundFlight.label, address: outboundFlight.airline, type: 'flight' } });
+              }
+              if (hotel.type === 'hotel') {
+                allItems.unshift({ type: 'place', data: { name: hotel.name, address: hotel.address, type: 'hotel' } });
+              }
+              if (returnFlight.type === 'flight') {
+                allItems.push({ type: 'place', data: { name: returnFlight.label, address: returnFlight.airline, type: 'flight' } });
+              }
+              onCreateTrip(location, allItems);
+            }}
+            disabled={!location || (items.length === 0 && outboundFlight.type !== 'flight' && returnFlight.type !== 'flight' && hotel.type !== 'hotel') || saving}
           >
             {saving ? (
               <><span className="tt-trip-planner-spinner" /> Saving...</>
