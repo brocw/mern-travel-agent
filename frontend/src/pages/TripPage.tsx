@@ -123,7 +123,7 @@ const TripPage = () => {
       {/* ── Navbar ── */}
       <nav className="tt-trips-nav">
         <div className="tt-trips-nav-inner">
-          <a href="/" className="tt-trips-nav-brand">
+          <a href="/account" className="tt-trips-nav-brand">
             <span style={{ color: 'var(--tt-navy)', fontWeight: 900, fontSize: '1.4rem', letterSpacing: '-0.03em' }}>
               Trip<span style={{ color: 'var(--tt-steel)' }}>tastic!</span>
             </span>

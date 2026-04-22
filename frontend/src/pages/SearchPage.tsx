@@ -55,6 +55,7 @@ const SearchPage = () => {
   const [pendingFlight, setPendingFlight] = useState<any>(null);
   const [pendingHotel, setPendingHotel] = useState<any>(null);
   const [existingTripId, setExistingTripId] = useState<string | null>(null);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const q = params.get('q');
@@ -168,7 +169,6 @@ const SearchPage = () => {
 
   const handleAddToTrip = (item: Place | Event) => {
     const isPlace = 'address' in item;
-    // If it's a lodging/hotel, send to hotel slot
     if (isPlace && (item as Place).type === 'lodging') {
       setPendingHotel({ name: (item as Place).name, address: (item as Place).address });
       setMessage(`Added "${item.name}" to Where You're Staying`);
@@ -192,7 +192,6 @@ const SearchPage = () => {
       let tripId = existingTripId;
       let tok = getToken();
 
-      // Only create a new trip if we don't have an existing one
       if (!tripId) {
         const tripResponse = await fetch(buildPath('api/createTrip'), {
           method: 'POST',
@@ -241,13 +240,14 @@ const SearchPage = () => {
     <div className="tt-search-page">
       <nav className="tt-search-nav">
         <div className="tt-search-nav-inner">
-          <a href="/" className="tt-search-nav-brand">
+          <a href="/account" className="tt-search-nav-brand">
             <span className="tt-search-nav-brand-trip">Trip</span>
             <span className="tt-search-nav-brand-tastic">tastic!</span>
           </a>
           <div className="tt-search-nav-links">
             <a href="/search" className="tt-search-nav-link active">🔍 Explore</a>
             <a href="/trips" className="tt-search-nav-link">🗺️ My Trips</a>
+            <a href="/account" className="tt-search-nav-link">👤 Account</a>
           </div>
           <div className="tt-search-nav-right">
             {tripItems.length > 0 && (

@@ -2231,3 +2231,192 @@ input, select, textarea { font-family: inherit; }
 .tt-planner-slot-option:last-child { border-bottom: none; }
 .tt-planner-slot-option:hover { background: var(--tt-ice); }
 .tt-planner-slot-option span { font-size: 1rem; }
+
+/* ============================================================
+   ACCOUNT PAGE
+   ============================================================ */
+
+.tt-account-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, var(--tt-ice) 0%, #F9FAFB 30%, var(--tt-blush) 100%);
+}
+
+.tt-account-content {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+/* ── Welcome Hero ── */
+.tt-account-hero {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  background: white;
+  border: 1px solid #EBEBEB;
+  border-radius: 1.5rem;
+  padding: 2rem 2.5rem;
+  box-shadow: 0 2px 12px rgba(58,79,138,0.07);
+}
+
+.tt-account-avatar {
+  width: 5rem;
+  height: 5rem;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, var(--tt-navy), var(--tt-steel));
+  color: white;
+  font-size: 1.6rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(58,79,138,0.25);
+  letter-spacing: -0.02em;
+}
+
+.tt-account-welcome {
+  font-weight: 800;
+  font-size: clamp(1.4rem, 3vw, 1.9rem);
+  color: var(--tt-navy);
+  letter-spacing: -0.02em;
+  margin-bottom: 0.35rem;
+}
+
+.tt-account-welcome-sub {
+  color: var(--tt-muted);
+  font-size: 0.95rem;
+}
+
+/* ── Navigation Cards ── */
+.tt-account-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 640px) {
+  .tt-account-cards { grid-template-columns: 1fr; }
+  .tt-account-hero { flex-direction: column; text-align: center; }
+}
+
+.tt-account-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 2rem;
+  border-radius: 1.5rem;
+  border: 1.5px solid #EBEBEB;
+  background: white;
+  text-decoration: none;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  cursor: pointer;
+}
+
+.tt-account-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(58,79,138,0.13);
+  border-color: var(--tt-purple);
+}
+
+.tt-account-card--trips:hover { border-color: var(--tt-navy); }
+.tt-account-card--wizard:hover { border-color: var(--tt-steel); }
+
+.tt-account-card-icon {
+  font-size: 2.5rem;
+  width: 4rem;
+  height: 4rem;
+  background: var(--tt-ice);
+  border: 1px solid #EBEBEB;
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tt-account-card-body { flex: 1; }
+
+.tt-account-card-title {
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--tt-navy);
+  letter-spacing: -0.01em;
+  margin-bottom: 0.35rem;
+}
+
+.tt-account-card-desc {
+  color: var(--tt-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.tt-account-card-arrow {
+  font-size: 1.4rem;
+  color: var(--tt-steel);
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.tt-account-card:hover .tt-account-card-arrow {
+  transform: translateX(4px);
+}
+
+/* ── Quick Actions ── */
+.tt-account-quick {
+  background: white;
+  border: 1px solid #EBEBEB;
+  border-radius: 1.5rem;
+  padding: 1.75rem 2rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.tt-account-quick-title {
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--tt-muted);
+  margin-bottom: 1rem;
+}
+
+.tt-account-quick-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.tt-account-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.875rem;
+  background: var(--tt-ice);
+  border: 1.5px solid #EBEBEB;
+  color: var(--tt-navy);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.tt-account-quick-btn:hover {
+  background: var(--tt-navy);
+  color: white;
+  border-color: var(--tt-navy);
+  transform: translateY(-1px);
+}
+
+.tt-account-quick-btn--logout:hover {
+  background: #FEF2F2;
+  color: #DC2626;
+  border-color: #FECACA;
+}

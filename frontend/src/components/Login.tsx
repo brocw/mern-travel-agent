@@ -63,7 +63,7 @@ function Login({ onClose }: LoginProps) {
           localStorage.setItem("user_data", JSON.stringify(user));
           const pendingSearch = localStorage.getItem('pending_search');
           localStorage.removeItem('pending_search');
-          window.location.href = pendingSearch ? `/search?q=${encodeURIComponent(pendingSearch)}` : '/search';
+          window.location.href = pendingSearch ? `/search?q=${encodeURIComponent(pendingSearch)}` : '/account';
         }
       } catch (e) {
         console.log(e);
